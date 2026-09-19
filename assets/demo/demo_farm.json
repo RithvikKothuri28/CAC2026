@@ -1,0 +1,137 @@
+{
+  "id": "demo_farm_cac2026",
+  "name": "Hollis Creek Farm",
+  "location": "Demonstration dataset — not a real operation",
+  "planYear": 2026,
+  "fields": [
+    {
+      "id": "f_east_eighty",
+      "name": "East Eighty",
+      "acres": 85.0,
+      "soilType": "sandy loam",
+      "irrigated": false,
+      "currentCropId": "winter_wheat",
+      "yieldMultiplier": 0.74,
+      "cropHistory": { "2024": "winter_wheat", "2025": "corn" },
+      "notes": "Dryland corner, lightest soil on the farm."
+    },
+    {
+      "id": "f_home_place",
+      "name": "Home Place",
+      "acres": 120.0,
+      "soilType": "silt loam",
+      "irrigated": true,
+      "currentCropId": "corn",
+      "yieldMultiplier": 1.02,
+      "cropHistory": { "2024": "corn", "2025": "soybeans" },
+      "notes": "Closest to the yard and the grain setup."
+    },
+    {
+      "id": "f_north_quarter",
+      "name": "North Quarter",
+      "acres": 160.0,
+      "soilType": "silty clay loam",
+      "irrigated": true,
+      "currentCropId": "corn",
+      "yieldMultiplier": 0.98,
+      "cropHistory": { "2024": "soybeans", "2025": "corn" },
+      "notes": "Second straight year of corn under the current plan."
+    },
+    {
+      "id": "f_river_bottom",
+      "name": "River Bottom",
+      "acres": 145.0,
+      "soilType": "sandy loam",
+      "irrigated": true,
+      "currentCropId": "corn",
+      "yieldMultiplier": 1.0,
+      "cropHistory": { "2024": "corn", "2025": "soybeans" },
+      "notes": "Sandy ground; drains fast and will not hold a hay stand."
+    },
+    {
+      "id": "f_south_ridge",
+      "name": "South Ridge",
+      "acres": 180.0,
+      "soilType": "clay loam",
+      "irrigated": false,
+      "currentCropId": "soybeans",
+      "yieldMultiplier": 0.79,
+      "cropHistory": { "2024": "soybeans", "2025": "corn" },
+      "notes": "Dryland. No pivot reaches this ground."
+    },
+    {
+      "id": "f_west_field",
+      "name": "West Field",
+      "acres": 210.0,
+      "soilType": "silt loam",
+      "irrigated": true,
+      "currentCropId": "corn",
+      "yieldMultiplier": 1.04,
+      "cropHistory": { "2024": "corn", "2025": "soybeans" },
+      "notes": "Largest and most productive field under irrigation."
+    }
+  ],
+  "fixedExpenses": [
+    {
+      "id": "fx_property_tax",
+      "name": "Property tax",
+      "annualAmount": 28000.0,
+      "category": "land",
+      "inflationRate": 0.025
+    },
+    {
+      "id": "fx_insurance",
+      "name": "Crop and liability insurance",
+      "annualAmount": 26500.0,
+      "category": "insurance",
+      "inflationRate": 0.04
+    },
+    {
+      "id": "fx_depreciation",
+      "name": "Machinery depreciation",
+      "annualAmount": 41000.0,
+      "category": "depreciation",
+      "inflationRate": 0.0
+    },
+    {
+      "id": "fx_admin",
+      "name": "Farm administration and management",
+      "annualAmount": 22500.0,
+      "category": "overhead",
+      "inflationRate": 0.03
+    },
+    {
+      "id": "fx_utilities",
+      "name": "Utilities and general",
+      "annualAmount": 14000.0,
+      "category": "overhead",
+      "inflationRate": 0.035
+    }
+  ],
+  "debts": [
+    {
+      "id": "d_land_mortgage",
+      "name": "Land mortgage",
+      "principal": 612000.0,
+      "annualInterestRate": 0.0635,
+      "annualPayment": 52400.0,
+      "remainingYears": 16
+    },
+    {
+      "id": "d_equipment",
+      "name": "Equipment loan",
+      "principal": 184000.0,
+      "annualInterestRate": 0.071,
+      "annualPayment": 31600.0,
+      "remainingYears": 6
+    },
+    {
+      "id": "d_operating_carryover",
+      "name": "Operating line carryover",
+      "principal": 68000.0,
+      "annualInterestRate": 0.0825,
+      "annualPayment": 12000.0,
+      "remainingYears": 5
+    }
+  ]
+}

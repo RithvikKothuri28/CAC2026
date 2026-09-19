@@ -1,0 +1,74 @@
+[
+  {
+    "id": "c_water",
+    "type": "maxWaterAcreInches",
+    "mode": "hard",
+    "numericValue": 7800.0,
+    "textValue": "",
+    "label": "Stay within 7,800 acre-inches of irrigation"
+  },
+  {
+    "id": "c_nitrogen",
+    "type": "maxNitrogenLbs",
+    "mode": "hard",
+    "numericValue": 135000.0,
+    "textValue": "",
+    "label": "Apply no more than 135,000 lb of nitrogen"
+  },
+  {
+    "id": "c_operating_expense",
+    "type": "maxOperatingExpense",
+    "mode": "hard",
+    "numericValue": 640000.0,
+    "textValue": "",
+    "label": "Keep operating expense under $640,000"
+  },
+  {
+    "id": "c_rotation",
+    "type": "rotationRequired",
+    "mode": "hard",
+    "numericValue": 0.0,
+    "textValue": "",
+    "label": "Honour crop rotation on every field"
+  },
+  {
+    "id": "c_crop_count",
+    "type": "minCropCount",
+    "mode": "hard",
+    "numericValue": 3.0,
+    "textValue": "",
+    "label": "Grow at least three different crops"
+  },
+  {
+    "id": "c_cash",
+    "type": "minCashAfterDebtService",
+    "mode": "preference",
+    "numericValue": 0.0,
+    "textValue": "",
+    "label": "Finish the year cash positive after debt payments"
+  },
+  {
+    "id": "c_concentration",
+    "type": "maxCropConcentration",
+    "mode": "preference",
+    "numericValue": 0.5,
+    "textValue": "",
+    "label": "Keep any single crop under half the farm"
+  },
+  {
+    "id": "c_coverage",
+    "type": "minDebtServiceCoverage",
+    "mode": "preference",
+    "numericValue": 1.25,
+    "textValue": "",
+    "label": "Hold debt-service coverage at 1.25x or better"
+  },
+  {
+    "id": "c_soil_cover",
+    "type": "minSoilCoverShare",
+    "mode": "preference",
+    "numericValue": 0.2,
+    "textValue": "",
+    "label": "Keep at least 20% of acres in a soil-covering crop"
+  }
+]
