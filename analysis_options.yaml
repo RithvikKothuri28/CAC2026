@@ -1,0 +1,13 @@
+include: package:flutter_lints/flutter.yaml
+analyzer:
+  exclude:
+    - build/**
+    - '**/node_modules/**'
+    - functions/lib/**
+    - android/**
+    - ios/**
+    - web/**
+linter:
+  rules:
+    avoid_print: true
+    use_build_context_synchronously: true

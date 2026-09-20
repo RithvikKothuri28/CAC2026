@@ -1,0 +1,12 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "members", "fieldPath": "userId", "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }] },
+    { "collectionGroup": "farms", "fieldPath": "data", "indexes": [] },
+    { "collectionGroup": "optimizationRuns", "fieldPath": "data", "indexes": [] },
+    { "collectionGroup": "simulationRuns", "fieldPath": "data", "indexes": [] },
+    { "collectionGroup": "days", "fieldPath": "expiresAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "aiGlobalUsage", "fieldPath": "expiresAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "deletedAccounts", "fieldPath": "expiresAt", "ttl": true, "indexes": [] }
+  ]
+}

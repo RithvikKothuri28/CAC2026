@@ -1,0 +1,491 @@
+{
+  "schemaVersion": 1,
+  "id": "sample-farm",
+  "name": "Prairie Bend · Sample Farm",
+  "fields": [
+    {
+      "id": "north",
+      "name": "North Field",
+      "acres": 160,
+      "currentCropId": "corn",
+      "compatibleCropIds": [
+        "corn",
+        "soy",
+        "wheat",
+        "sorghum",
+        "alfalfa"
+      ],
+      "cropHistory": [
+        "soy"
+      ],
+      "irrigated": true,
+      "soilType": "Silt loam",
+      "yieldMultiplier": 1,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "east",
+      "name": "East Field",
+      "acres": 180,
+      "currentCropId": "corn",
+      "compatibleCropIds": [
+        "corn",
+        "soy",
+        "wheat",
+        "sorghum",
+        "alfalfa"
+      ],
+      "cropHistory": [
+        "soy"
+      ],
+      "irrigated": true,
+      "soilType": "Loam",
+      "yieldMultiplier": 1,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "south",
+      "name": "South Field",
+      "acres": 140,
+      "currentCropId": "corn",
+      "compatibleCropIds": [
+        "corn",
+        "soy",
+        "wheat",
+        "sorghum",
+        "alfalfa"
+      ],
+      "cropHistory": [
+        "soy"
+      ],
+      "irrigated": true,
+      "soilType": "Silt loam",
+      "yieldMultiplier": 1,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "west",
+      "name": "West Field",
+      "acres": 170,
+      "currentCropId": "corn",
+      "compatibleCropIds": [
+        "corn",
+        "soy",
+        "wheat",
+        "sorghum",
+        "alfalfa"
+      ],
+      "cropHistory": [
+        "soy"
+      ],
+      "irrigated": true,
+      "soilType": "Loam",
+      "yieldMultiplier": 1,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "creek",
+      "name": "Creek Field",
+      "acres": 130,
+      "currentCropId": "soy",
+      "compatibleCropIds": [
+        "corn",
+        "soy",
+        "wheat",
+        "sorghum",
+        "alfalfa"
+      ],
+      "cropHistory": [
+        "corn"
+      ],
+      "irrigated": true,
+      "soilType": "Silt loam",
+      "yieldMultiplier": 1,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "ridge",
+      "name": "Ridge Field",
+      "acres": 140,
+      "currentCropId": "wheat",
+      "compatibleCropIds": [
+        "corn",
+        "soy",
+        "wheat",
+        "sorghum",
+        "alfalfa"
+      ],
+      "cropHistory": [
+        "corn"
+      ],
+      "irrigated": true,
+      "soilType": "Loam",
+      "yieldMultiplier": 1,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    }
+  ],
+  "crops": [
+    {
+      "id": "corn",
+      "name": "Corn",
+      "yieldPerAcre": 180,
+      "pricePerUnit": 4.6,
+      "yieldUnit": "bushel",
+      "seedCostPerAcre": 125,
+      "fertilizerCostPerAcre": 210,
+      "chemicalCostPerAcre": 75,
+      "waterCostPerAcre": 70,
+      "laborCostPerAcre": 60,
+      "fuelCostPerAcre": 65,
+      "equipmentCostPerAcre": 45,
+      "waterPerAcre": 1.6,
+      "nitrogenPerAcre": 180,
+      "yieldVolatility": 0.18,
+      "priceVolatility": 0.2,
+      "rotationFamily": "grass",
+      "minimumRotationYears": 1,
+      "requiresIrrigation": true,
+      "inputs": [
+        "synthetic nitrogen"
+      ],
+      "providesSoilCover": false,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "soy",
+      "name": "Soybeans",
+      "yieldPerAcre": 58,
+      "pricePerUnit": 11.7,
+      "yieldUnit": "bushel",
+      "seedCostPerAcre": 70,
+      "fertilizerCostPerAcre": 60,
+      "chemicalCostPerAcre": 65,
+      "waterCostPerAcre": 35,
+      "laborCostPerAcre": 55,
+      "fuelCostPerAcre": 55,
+      "equipmentCostPerAcre": 40,
+      "waterPerAcre": 0.7,
+      "nitrogenPerAcre": 30,
+      "yieldVolatility": 0.15,
+      "priceVolatility": 0.22,
+      "rotationFamily": "legume",
+      "minimumRotationYears": 1,
+      "requiresIrrigation": false,
+      "inputs": [],
+      "providesSoilCover": false,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "wheat",
+      "name": "Winter wheat",
+      "yieldPerAcre": 75,
+      "pricePerUnit": 6.1,
+      "yieldUnit": "bushel",
+      "seedCostPerAcre": 40,
+      "fertilizerCostPerAcre": 105,
+      "chemicalCostPerAcre": 40,
+      "waterCostPerAcre": 20,
+      "laborCostPerAcre": 40,
+      "fuelCostPerAcre": 40,
+      "equipmentCostPerAcre": 25,
+      "waterPerAcre": 0.5,
+      "nitrogenPerAcre": 90,
+      "yieldVolatility": 0.16,
+      "priceVolatility": 0.18,
+      "rotationFamily": "grass",
+      "minimumRotationYears": 1,
+      "requiresIrrigation": false,
+      "inputs": [
+        "synthetic nitrogen"
+      ],
+      "providesSoilCover": true,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "sorghum",
+      "name": "Sorghum",
+      "yieldPerAcre": 115,
+      "pricePerUnit": 4.9,
+      "yieldUnit": "bushel",
+      "seedCostPerAcre": 55,
+      "fertilizerCostPerAcre": 105,
+      "chemicalCostPerAcre": 55,
+      "waterCostPerAcre": 25,
+      "laborCostPerAcre": 45,
+      "fuelCostPerAcre": 40,
+      "equipmentCostPerAcre": 25,
+      "waterPerAcre": 0.65,
+      "nitrogenPerAcre": 100,
+      "yieldVolatility": 0.14,
+      "priceVolatility": 0.18,
+      "rotationFamily": "grass",
+      "minimumRotationYears": 1,
+      "requiresIrrigation": false,
+      "inputs": [
+        "synthetic nitrogen"
+      ],
+      "providesSoilCover": false,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "alfalfa",
+      "name": "Alfalfa",
+      "yieldPerAcre": 6,
+      "pricePerUnit": 185,
+      "yieldUnit": "ton",
+      "seedCostPerAcre": 90,
+      "fertilizerCostPerAcre": 130,
+      "chemicalCostPerAcre": 50,
+      "waterCostPerAcre": 160,
+      "laborCostPerAcre": 105,
+      "fuelCostPerAcre": 85,
+      "equipmentCostPerAcre": 70,
+      "waterPerAcre": 2.2,
+      "nitrogenPerAcre": 20,
+      "yieldVolatility": 0.13,
+      "priceVolatility": 0.15,
+      "rotationFamily": "legume",
+      "minimumRotationYears": 0,
+      "requiresIrrigation": true,
+      "inputs": [],
+      "providesSoilCover": true,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    }
+  ],
+  "expenses": [
+    {
+      "id": "land",
+      "name": "Land lease and property expense",
+      "annualAmount": 84000,
+      "inflationRate": 0.03,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "insurance",
+      "name": "Insurance and administration",
+      "annualAmount": 32000,
+      "inflationRate": 0.03,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    },
+    {
+      "id": "maintenance",
+      "name": "Fixed infrastructure maintenance",
+      "annualAmount": 24000,
+      "inflationRate": 0.04,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    }
+  ],
+  "debts": [
+    {
+      "id": "equipment",
+      "name": "Equipment loan",
+      "balance": 240000,
+      "annualInterestRate": 0.065,
+      "annualPayment": 55000,
+      "provenance": {
+        "source": "sample",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "provider": "FarmTwin fictional input dataset",
+        "quality": "Illustrative assumptions; not agronomic guidance"
+      }
+    }
+  ],
+  "constraints": [
+    {
+      "id": "water",
+      "name": "Annual irrigation allocation",
+      "kind": "maxWater",
+      "mode": "hard",
+      "limit": 1050
+    },
+    {
+      "id": "nitrogen",
+      "name": "Nitrogen budget",
+      "kind": "maxNitrogen",
+      "mode": "hard",
+      "limit": 135000
+    },
+    {
+      "id": "concentration",
+      "name": "Crop concentration",
+      "kind": "maxConcentration",
+      "mode": "hard",
+      "limit": 0.45
+    },
+    {
+      "id": "diversity",
+      "name": "Minimum crop diversity",
+      "kind": "minDiversity",
+      "mode": "hard",
+      "limit": 3
+    },
+    {
+      "id": "rotation",
+      "name": "Rotation by crop family",
+      "kind": "rotation",
+      "mode": "preference",
+      "limit": 0
+    },
+    {
+      "id": "liquidity",
+      "name": "Minimum available liquidity",
+      "kind": "minLiquidity",
+      "mode": "preference",
+      "limit": 30000
+    }
+  ],
+  "settings": {
+    "currencyCode": "USD",
+    "optimization": {
+      "weights": {
+        "profit": 0.35,
+        "resilience": 0.25,
+        "waterEfficiency": 0.15,
+        "inputEfficiency": 0.1,
+        "practiceAlignment": 0.1,
+        "diversification": 0.05
+      },
+      "exhaustiveLimit": 100000,
+      "candidateLimit": 20000,
+      "frontierLimit": 300,
+      "seed": 2718
+    },
+    "simulation": {
+      "iterations": 5000,
+      "seed": 2026,
+      "weatherCorrelation": 0.65,
+      "marketCorrelation": 0.45,
+      "fertilizerVolatility": 0.15,
+      "fuelVolatility": 0.2,
+      "waterVolatility": 0.15,
+      "equipmentFailureProbability": 0.08,
+      "equipmentFailureCost": 24000
+    },
+    "priceGrowthRate": 0.02,
+    "expenseInflationRate": 0.03,
+    "liquidityReserve": 45000,
+    "alertUtilizationThreshold": 0.9
+  },
+  "provenance": {
+    "source": "sample",
+    "updatedAt": "2026-01-01T00:00:00.000Z",
+    "provider": "FarmTwin fictional input dataset",
+    "quality": "Illustrative assumptions; not agronomic guidance"
+  },
+  "scenarios": [
+    {
+      "id": "drought",
+      "name": "Drought",
+      "yieldMultiplier": 0.8,
+      "waterAvailabilityMultiplier": 0.8
+    },
+    {
+      "id": "fertilizer",
+      "name": "Fertilizer shock",
+      "fertilizerMultiplier": 1.25
+    },
+    {
+      "id": "fuel",
+      "name": "Fuel shock",
+      "fuelMultiplier": 1.3
+    },
+    {
+      "id": "commodity",
+      "name": "Commodity price decline",
+      "priceMultiplier": 0.8
+    },
+    {
+      "id": "failure",
+      "name": "Yield failure",
+      "yieldMultiplier": 0.65
+    },
+    {
+      "id": "equipment",
+      "name": "Equipment failure",
+      "equipmentCostAddition": 30000
+    },
+    {
+      "id": "debt",
+      "name": "Debt interest increase",
+      "interestRateMultiplier": 1.5
+    },
+    {
+      "id": "downturn",
+      "name": "Combined downturn",
+      "priceMultiplier": 0.85,
+      "yieldMultiplier": 0.9,
+      "fertilizerMultiplier": 1.2,
+      "fuelMultiplier": 1.15
+    }
+  ]
+}
