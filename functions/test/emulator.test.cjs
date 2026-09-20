@@ -98,7 +98,12 @@ test('published passport is anonymous get-only and cannot leak private source da
   const replaced = await publishPassport(db, 'owner', 'farm-a', 'batch-a', ['crop']);
   assert.equal(replaced.passportId, result.passportId);
   assert.equal('inputRecords' in (await getDoc(ref)).data(), false);
+  await db.doc('farms/farm-a').update({ source: 'sample' });
+  await publishPassport(db, 'owner', 'farm-a', 'batch-a', ['crop']);
+  assert.equal((await getDoc(ref)).data().provenance, 'sample');
   await assert.rejects(unpublishPassport(db, 'outsider', 'farm-b', result.passportId), { code: 'not-found' });
+  await unpublishPassport(db, 'owner', 'farm-a', result.passportId);
+  assert.equal((await getDoc(ref)).exists(), false);
   await unpublishPassport(db, 'owner', 'farm-a', result.passportId);
   assert.equal((await getDoc(ref)).exists(), false);
 });
@@ -128,6 +133,9 @@ test('account deletion cleans farms, passports, memberships, settings and auth i
   assert.equal((await db.doc('farms/farm-b').get()).exists, true);
   await assert.rejects(getAuth(admin).getUser('owner'), { code: 'auth/user-not-found' });
   await assertFails(setDoc(doc(privateDb('owner'), 'farms/resurrected'), farm()));
+  // A different owner re-adding a stale UID must not revive its old-token access.
+  await db.doc('farms/farm-b/members/owner').set({ userId: 'owner', role: 'viewer' });
+  await assert.rejects(requireFarmAccess(db, 'farm-b', 'owner'), { code: 'permission-denied' });
 });
 
 test('deletion freeze denies edits and server publication during retry window', async () => {
@@ -137,6 +145,12 @@ test('deletion freeze denies edits and server publication during retry window', 
   await assert.rejects(publishPassport(db, 'owner', 'farm-a', 'batch-a', ['crop']), { code: 'permission-denied' });
   await db.doc('accountDeletionRequests/outsider').set({ requestedAt: new Date() });
   await assertFails(setDoc(doc(privateDb('outsider'), 'farms/new-farm'), farm('outsider')));
+  await db.doc('deletedAccounts/viewer').set({ expiresAt: new Date(Date.now() + 86400000) });
+  await assert.rejects(requireFarmAccess(db, 'farm-a', 'viewer'), { code: 'permission-denied' });
+  await db.doc('deletedAccounts/outsider').set({ expiresAt: new Date(Date.now() + 86400000) });
+  await db.doc('accountDeletionRequests/outsider').delete();
+  await db.doc('farms/farm-b/harvestBatches/batch-b').set({ data: { crop: 'Fixture crop' } });
+  await assert.rejects(publishPassport(db, 'outsider', 'farm-b', 'batch-b', ['crop']), { code: 'permission-denied' });
 });
 
 test('quota transaction prevents concurrent overspend; unauthorized context remains inaccessible', async () => {

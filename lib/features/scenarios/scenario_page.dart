@@ -125,6 +125,70 @@ class ScenarioPage extends StatelessWidget {
                     plan: state.scenarioResult!.recommended!.plan,
                   ),
                 ],
+                const SizedBox(height: 20),
+                OutlinedButton.icon(
+                  onPressed: state.busy ? null : state.simulateScenario,
+                  icon: const Icon(Icons.show_chart),
+                  label: const Text('Simulate scenario'),
+                ),
+                if (state.scenarioRisk != null) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    'Scenario cash distributions',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${state.scenarioRisk!.alternative == null ? 'Current allocation under the scenario assumptions.' : 'Both allocations use the scenario assumptions and the same random seed.'} ${state.scenarioRisk!.current.iterations} simulated years.',
+                  ),
+                  const SizedBox(height: 16),
+                  ResponsiveGrid(
+                    minWidth: 180,
+                    children: [
+                      Metric(
+                        label: 'CURRENT MEAN CASH',
+                        value: currency(
+                          state.scenarioRisk!.current.mean,
+                          farm.settings.currencyCode,
+                        ),
+                        icon: Icons.account_balance_wallet_outlined,
+                      ),
+                      if (state.scenarioRisk!.alternative != null) ...[
+                        Metric(
+                          label: 'SCENARIO PLAN MEAN CASH',
+                          value: currency(
+                            state.scenarioRisk!.alternative!.mean,
+                            farm.settings.currencyCode,
+                          ),
+                          icon: Icons.trending_up,
+                        ),
+                        Metric(
+                          label: 'SCENARIO PLAN LOSS PROBABILITY',
+                          value: percentage(
+                            state
+                                .scenarioRisk!
+                                .alternative!
+                                .negativeCashProbability,
+                          ),
+                          icon: Icons.shield_outlined,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  DistributionChart(
+                    current: state.scenarioRisk!.current,
+                    alternative: state.scenarioRisk!.alternative,
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: state.busy
+                        ? null
+                        : () => state.saveRun(true, scenario: true),
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('Save scenario simulation'),
+                  ),
+                ],
               ],
             ),
           ),

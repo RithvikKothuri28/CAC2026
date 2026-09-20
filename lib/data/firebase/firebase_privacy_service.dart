@@ -12,18 +12,22 @@ class FirebasePrivacyService {
   FirebasePrivacyService({
     required SharedPreferences preferences,
     FirebaseAnalytics? analytics,
+    FirebaseAnalytics Function()? analyticsFactory,
     FirebaseCrashlytics? crashlytics,
     this.allowCollection = true,
   }) : _preferences = preferences,
        _analytics = analytics,
+       _analyticsFactory = analyticsFactory,
        _crashlytics = crashlytics;
   final SharedPreferences _preferences;
-  final FirebaseAnalytics? _analytics;
+  FirebaseAnalytics? _analytics;
+  final FirebaseAnalytics Function()? _analyticsFactory;
   final FirebaseCrashlytics? _crashlytics;
   final bool allowCollection;
   static const storageKey = 'farmtwin.privacy.v1';
   String _activeKey = storageKey;
   int _accountEpoch = 0;
+  int _choiceEpoch = 0;
   Future<void> _pending = Future.value();
   UserSettings _current = const UserSettings();
   UserSettings get current => _current;
@@ -35,20 +39,36 @@ class FirebasePrivacyService {
     final epoch = ++_accountEpoch;
     _activeKey = uid == null ? storageKey : '$storageKey.$uid';
     final cached = uid == null ? null : _preferences.getString(_activeKey);
+    final choiceEpoch = _choiceEpoch;
     _current = const UserSettings();
-    await apply(const UserSettings());
+    // Disable collection while identity is changing, without erasing this
+    // account's explicitly saved offline preferences.
+    await _apply(const UserSettings(), persist: false);
     if (uid == null || epoch != _accountEpoch) return;
     try {
       final settings = await readRemote().timeout(const Duration(seconds: 5));
-      if (epoch == _accountEpoch) await apply(settings);
-    } on Object {
-      if (cached != null && epoch == _accountEpoch) {
-        final saved = UserSettings.fromJson(
-          Map<String, dynamic>.from(jsonDecode(cached) as Map),
-        );
-        await apply(saved);
+      if (epoch == _accountEpoch && choiceEpoch == _choiceEpoch) {
+        await _apply(settings, persist: true);
       }
-      rethrow;
+    } on Object catch (error) {
+      if (epoch != _accountEpoch || choiceEpoch != _choiceEpoch) return;
+      final failure = firebaseFailure(error);
+      if (cached != null && failure is NetworkFailure) {
+        try {
+          final saved = UserSettings.fromJson(
+            Map<String, dynamic>.from(jsonDecode(cached) as Map),
+          );
+          await _apply(saved, persist: false);
+        } on AppFailure {
+          rethrow;
+        } on Object catch (cacheError) {
+          throw StorageFailure(
+            'Saved privacy preferences could not be read. Optional data collection is disabled.',
+            cause: cacheError,
+          );
+        }
+      }
+      throw failure;
     }
   }
 
@@ -73,23 +93,33 @@ class FirebasePrivacyService {
   }
 
   Future<void> apply(UserSettings settings) {
+    _choiceEpoch++;
+    return _apply(settings, persist: true);
+  }
+
+  Future<void> _apply(UserSettings settings, {required bool persist}) {
     final epoch = _accountEpoch;
     final key = _activeKey;
     final result = _pending.then(
       (_) => firebaseGuard(() async {
         if (epoch != _accountEpoch) return;
-        await _analytics?.setAnalyticsCollectionEnabled(
-          allowCollection && settings.analyticsConsent,
-        );
+        final analyticsEnabled = allowCollection && settings.analyticsConsent;
+        // On web, constructing the JS analytics SDK can send installation and
+        // configuration requests. Defer it until explicit account consent.
+        if (analyticsEnabled) _analytics ??= _analyticsFactory?.call();
+        await _analytics?.setAnalyticsCollectionEnabled(analyticsEnabled);
+        if (epoch != _accountEpoch) return;
         await _crashlytics?.setCrashlyticsCollectionEnabled(
           allowCollection && settings.crashReportingConsent,
         );
-        if (!await _preferences.setString(key, jsonEncode(settings.toJson()))) {
+        if (epoch != _accountEpoch) return;
+        if (persist &&
+            !await _preferences.setString(key, jsonEncode(settings.toJson()))) {
           throw const StorageFailure(
             'Privacy preferences could not be saved on this device.',
           );
         }
-        _current = settings;
+        if (epoch == _accountEpoch) _current = settings;
       }),
     );
     _pending = result.then<void>((_) {}, onError: (Object _) {});

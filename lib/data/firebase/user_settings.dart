@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/errors/app_failure.dart';
 import 'firebase_failure.dart';
+import 'write_synchronization.dart';
 
 class UserSettings {
   const UserSettings({
@@ -35,7 +36,12 @@ class UserSettings {
 }
 
 class FirestoreSettingsRepository {
-  const FirestoreSettingsRepository(this._firestore, this._auth);
+  FirestoreSettingsRepository(
+    this._firestore,
+    this._auth, {
+    WriteSynchronization? synchronization,
+  }) : _synchronization = synchronization ?? WriteSynchronization();
+  final WriteSynchronization _synchronization;
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   DocumentReference<Map<String, dynamic>> get _document {
@@ -58,11 +64,20 @@ class FirestoreSettingsRepository {
       Map<String, dynamic>.from(json['settings'] as Map),
     );
   });
-  Future<void> save(UserSettings settings) => firebaseGuard(() async {
-    await _document.set({
-      'schemaVersion': 1,
-      'settings': settings.toJson(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  });
+  Future<void> save(UserSettings settings, {String? expectedUid}) =>
+      firebaseGuard(() async {
+        if (expectedUid != null && expectedUid != _auth.currentUser?.uid) {
+          throw const AuthenticationFailure(
+            'Account changed before privacy preferences could be saved.',
+          );
+        }
+        final document = _document;
+        await _synchronization.track(
+          document.set({
+            'schemaVersion': 1,
+            'settings': settings.toJson(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }),
+        );
+      });
 }

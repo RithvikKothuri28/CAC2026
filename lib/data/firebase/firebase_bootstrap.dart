@@ -18,6 +18,7 @@ import 'firebase_failure.dart';
 import 'firebase_privacy_service.dart';
 import 'firestore_farm_repository.dart';
 import 'user_settings.dart';
+import 'write_synchronization.dart';
 
 class FirebaseServices {
   const FirebaseServices({
@@ -91,8 +92,15 @@ class FirebaseBootstrap {
       }
       final privacy = FirebasePrivacyService(
         preferences: await SharedPreferences.getInstance(),
-        analytics: FirebaseAnalytics.instanceFor(app: app),
-        crashlytics: kIsWeb ? null : FirebaseCrashlytics.instance,
+        analytics: config.useEmulators || kIsWeb
+            ? null
+            : FirebaseAnalytics.instanceFor(app: app),
+        analyticsFactory: !config.useEmulators && kIsWeb
+            ? () => FirebaseAnalytics.instanceFor(app: app)
+            : null,
+        crashlytics: kIsWeb || config.useEmulators
+            ? null
+            : FirebaseCrashlytics.instance,
         allowCollection: !config.useEmulators,
       );
       // Do not restore another account's device-level consent before auth is known.
@@ -128,10 +136,20 @@ class FirebaseBootstrap {
         // request to production Remote Config or analytics.
         features = const FeatureConfig(harvestPublishingEnabled: true);
       }
+      final synchronization = WriteSynchronization();
       return FirebaseServices(
         auth: FirebaseAuthRepository(auth, functions),
-        farms: FirestoreFarmRepository(firestore, auth, functions),
-        settings: FirestoreSettingsRepository(firestore, auth),
+        farms: FirestoreFarmRepository(
+          firestore,
+          auth,
+          functions,
+          synchronization: synchronization,
+        ),
+        settings: FirestoreSettingsRepository(
+          firestore,
+          auth,
+          synchronization: synchronization,
+        ),
         privacy: privacy,
         features: features,
         passports: HarvestPassportService(functions, config, features),

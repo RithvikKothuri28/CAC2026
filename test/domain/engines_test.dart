@@ -280,6 +280,66 @@ void main() {
   });
   group('constraints and optimizer', () {
     test(
+      'large requested budgets respect disclosed field-result and Pareto work ceilings',
+      () {
+        final fields = List.generate(
+          maximumOptimizationFields,
+          (i) => Field(
+            id: 'f$i',
+            name: 'Field $i',
+            acres: 1,
+            currentCropId: 'a',
+            compatibleCropIds: ['a', 'b'],
+            provenance: provenance,
+          ),
+        );
+        final farm = fixture(
+          fields: fields,
+          exhaustiveLimit: 1000000,
+          candidateLimit: 1000000,
+        );
+        final run = const OptimizationEngine().run(farm);
+        expect(run.diagnostics.approximate, isTrue);
+        expect(
+          run.diagnostics.candidatesGenerated * fields.length,
+          lessThanOrEqualTo(maximumRetainedFieldEvaluations),
+        );
+        expect(
+          run.diagnostics.candidatesGenerated *
+              farm.settings.optimization.frontierLimit,
+          lessThanOrEqualTo(maximumParetoComparisons),
+        );
+        expect(
+          run.warnings.any(
+            (w) => w.contains('device work and memory ceilings'),
+          ),
+          isTrue,
+        );
+        expect(run.recommended, isNotNull);
+        expect(run.recommended!.plan.assignments.length, fields.length);
+      },
+    );
+    test(
+      'models exceeding supported dimensions fail before generating candidates',
+      () {
+        final fields = List.generate(
+          maximumOptimizationFields + 1,
+          (i) => Field(
+            id: 'f$i',
+            name: 'Field $i',
+            acres: 1,
+            currentCropId: 'a',
+            compatibleCropIds: ['a', 'b'],
+            provenance: provenance,
+          ),
+        );
+        expect(
+          () => const OptimizationEngine().run(fixture(fields: fields)),
+          throwsA(isA<OptimizationFailure>()),
+        );
+      },
+    );
+    test(
       'hard limits include exact boundary, preferences do not invalidate',
       () {
         final farm = fixture(
@@ -507,27 +567,67 @@ void main() {
     );
   });
   group('risk simulation', () {
-    test('splitting an identical crop does not reduce shared commodity risk', () {
-      final original = fixture(crops: [crop('a', priceVolatility: .25)]);
-      final split = original.copyWith(fields: [
-        original.fields.first.copyWith(id: 'left', acres: 4),
-        original.fields.first.copyWith(id: 'right', acres: 6),
-      ]);
-      final one = const OptimizationEngine().evaluate(original, original.currentPlan);
-      final two = const OptimizationEngine().evaluate(split, split.currentPlan);
-      expect(one.objectives[Objective.resilience], 355);
-      expect(two.objectives[Objective.resilience], one.objectives[Objective.resilience]);
-    });
-    test('paired plans consume identical weather shocks despite crop mix changes', () {
-      final original = fixture(crops: [crop('a', yieldVolatility: .2), crop('b', yieldVolatility: .2)], fields: [
-        Field(id: 'f1', name: 'One', acres: 4, currentCropId: 'a', compatibleCropIds: ['a','b'], provenance: provenance),
-        Field(id: 'f2', name: 'Two', acres: 6, currentCropId: 'a', compatibleCropIds: ['a','b'], provenance: provenance),
-      ]);
-      final alternative = FarmPlan(assignments: {'f1': 'b', 'f2': 'a'});
-      final one = const MonteCarloEngine().run(original, original.currentPlan);
-      final two = const MonteCarloEngine().run(original, alternative);
-      expect(two.samples, one.samples);
-    });
+    test(
+      'splitting an identical crop does not reduce shared commodity risk',
+      () {
+        final original = fixture(crops: [crop('a', priceVolatility: .25)]);
+        final split = original.copyWith(
+          fields: [
+            original.fields.first.copyWith(id: 'left', acres: 4),
+            original.fields.first.copyWith(id: 'right', acres: 6),
+          ],
+        );
+        final one = const OptimizationEngine().evaluate(
+          original,
+          original.currentPlan,
+        );
+        final two = const OptimizationEngine().evaluate(
+          split,
+          split.currentPlan,
+        );
+        expect(one.objectives[Objective.resilience], 355);
+        expect(
+          two.objectives[Objective.resilience],
+          one.objectives[Objective.resilience],
+        );
+      },
+    );
+    test(
+      'paired plans consume identical weather shocks despite crop mix changes',
+      () {
+        final original = fixture(
+          crops: [
+            crop('a', yieldVolatility: .2),
+            crop('b', yieldVolatility: .2),
+          ],
+          fields: [
+            Field(
+              id: 'f1',
+              name: 'One',
+              acres: 4,
+              currentCropId: 'a',
+              compatibleCropIds: ['a', 'b'],
+              provenance: provenance,
+            ),
+            Field(
+              id: 'f2',
+              name: 'Two',
+              acres: 6,
+              currentCropId: 'a',
+              compatibleCropIds: ['a', 'b'],
+              provenance: provenance,
+            ),
+          ],
+        );
+        final alternative = FarmPlan(assignments: {'f1': 'b', 'f2': 'a'});
+        final one = const MonteCarloEngine().run(
+          original,
+          original.currentPlan,
+        );
+        final two = const MonteCarloEngine().run(original, alternative);
+        expect(two.samples, one.samples);
+      },
+    );
     test(
       'zero variance collapses to independently calculated cash and one histogram bin',
       () {
@@ -663,6 +763,28 @@ void main() {
     });
   });
   group('scenario, multi-year and explanations', () {
+    test(
+      'explanations follow the selected plan and do not invent what-if calculations',
+      () {
+        final farm = fixture();
+        final run = const OptimizationEngine().run(farm);
+        final selected = const LocalExplanationEngine().explain(
+          'Why did the allocation change?',
+          farm,
+          optimization: run,
+          selected: run.current,
+        );
+        expect(selected, contains('Field One keeps a'));
+        expect(selected, isNot(contains('changes from a to b')));
+        final scenario = const LocalExplanationEngine().explain(
+          'What if prices increase another 15%?',
+          farm,
+          optimization: run,
+        );
+        expect(scenario, contains('Scenario lab'));
+        expect(scenario, contains('cannot infer an uncalculated scenario'));
+      },
+    );
     test('scenario transforms supplied assumptions and preserves original', () {
       final farm = fixture(
         crops: [crop('a').copyWith(fertilizerCostPerAcre: 10)],

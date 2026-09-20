@@ -12,12 +12,17 @@ import 'write_synchronization.dart';
 /// Production persistence. Firestore's mobile disk cache and pending write
 /// queue remain authoritative offline; there is no sample-data fallback.
 class FirestoreFarmRepository implements FarmRepository {
-  FirestoreFarmRepository(this._firestore, this._auth, this._functions);
+  FirestoreFarmRepository(
+    this._firestore,
+    this._auth,
+    this._functions, {
+    WriteSynchronization? synchronization,
+  }) : _synchronization = synchronization ?? WriteSynchronization();
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final FirebaseFunctions _functions;
   final Map<String, Map<String, dynamic>> _knownEnvelopes = {};
-  final _synchronization = WriteSynchronization();
+  final WriteSynchronization _synchronization;
   Stream<FarmSyncStatus> get syncStatus => _synchronization.status;
   FarmSyncStatus get currentSyncStatus => _synchronization.current;
 
@@ -27,13 +32,34 @@ class FirestoreFarmRepository implements FarmRepository {
   CollectionReference<Map<String, dynamic>> get _farms =>
       _firestore.collection('farms');
 
-  Farm _decode(DocumentSnapshot<Map<String, dynamic>> document) {
+  void _requireAccount(String uid) {
+    if (_uid != uid) {
+      throw const AuthenticationFailure(
+        'Account changed before the farm operation could complete.',
+      );
+    }
+  }
+
+  void _requireOwner(Map<String, dynamic> envelope, String uid) {
+    _requireAccount(uid);
+    if (envelope['ownerId'] != uid) {
+      throw const PermissionFailure(
+        'This farm belongs to another account. Sign in with its owner account.',
+      );
+    }
+  }
+
+  Farm _decode(DocumentSnapshot<Map<String, dynamic>> document, String uid) {
+    _requireAccount(uid);
     final envelope = document.data();
     if (envelope == null) {
       throw const RepositoryUnavailableFailure(
         'The requested farm does not exist.',
       );
     }
+    // Firestore can serve a previous account's disk cache without evaluating
+    // server rules. Check ownership before decoding or exposing that cache.
+    _requireOwner(envelope, uid);
     if (envelope['schemaVersion'] != 1) {
       throw const DataValidationFailure(
         'This farm uses an unsupported database version. Update FarmTwin.',
@@ -54,15 +80,19 @@ class FirestoreFarmRepository implements FarmRepository {
   @override
   Stream<List<Farm>> watchFarms() {
     try {
+      final uid = _uid;
       return _farms
-          .where('ownerId', isEqualTo: _uid)
+          .where('ownerId', isEqualTo: uid)
           .snapshots(includeMetadataChanges: true)
           .map((snapshot) {
+            _requireAccount(uid);
             _synchronization.updateMetadata(
               hasPendingWrites: snapshot.metadata.hasPendingWrites,
               isFromCache: snapshot.metadata.isFromCache,
             );
-            return snapshot.docs.map(_decode).toList(growable: false);
+            return snapshot.docs
+                .map((document) => _decode(document, uid))
+                .toList(growable: false);
           })
           .handleError((Object error) => throw firebaseFailure(error));
     } on Object catch (error) {
@@ -72,8 +102,9 @@ class FirestoreFarmRepository implements FarmRepository {
 
   @override
   Future<Farm> readFarm(String id) => firebaseGuard(() async {
+    final uid = _uid;
     FarmDataCodec.validateId(id);
-    return _decode(await _farms.doc(id).get());
+    return _decode(await _farms.doc(id).get(), uid);
   });
 
   @override
@@ -83,11 +114,11 @@ class FirestoreFarmRepository implements FarmRepository {
     final uid = _uid;
     // Already-loaded farm edits do not require a round trip before queueing.
     var existing = _knownEnvelopes[farm.id];
-    if (existing == null) {
-      existing = await _cachedData(reference);
-      if (existing != null) _knownEnvelopes[farm.id] = existing;
-    }
+    existing ??= await _cachedData(reference);
+    _requireAccount(uid);
     if (existing != null) {
+      _requireOwner(existing, uid);
+      _knownEnvelopes[farm.id] = existing;
       await _synchronization.track(
         reference.update({
           'name': farm.name,
@@ -127,7 +158,10 @@ class FirestoreFarmRepository implements FarmRepository {
 
   @override
   Future<void> deleteFarm(String id) => firebaseGuard(() async {
+    final uid = _uid;
     FarmDataCodec.validateId(id);
+    await _requireOwnedFarm(id, uid);
+    _requireAccount(uid);
     await _functions.httpsCallable('deleteFarm').call<void>({'farmId': id});
     _knownEnvelopes.remove(id);
   });
@@ -140,12 +174,33 @@ class FirestoreFarmRepository implements FarmRepository {
     return _farms.doc(farmId).collection(kind.name);
   }
 
+  Future<void> _requireOwnedFarm(String farmId, String uid) async {
+    FarmDataCodec.validateId(farmId);
+    final envelope =
+        _knownEnvelopes[farmId] ?? (await _farms.doc(farmId).get()).data();
+    _requireAccount(uid);
+    if (envelope == null) {
+      throw const RepositoryUnavailableFailure(
+        'The requested farm does not exist.',
+      );
+    }
+    _requireOwner(envelope, uid);
+    _knownEnvelopes[farmId] = envelope;
+  }
+
   @override
-  Stream<List<StoredEntity>> watchEntities(String farmId, EntityKind kind) {
+  Stream<List<StoredEntity>> watchEntities(
+    String farmId,
+    EntityKind kind,
+  ) async* {
     try {
-      return _entities(farmId, kind)
+      final uid = _uid;
+      await _requireOwnedFarm(farmId, uid);
+      _requireAccount(uid);
+      yield* _entities(farmId, kind)
           .snapshots(includeMetadataChanges: true)
           .map((snapshot) {
+            _requireAccount(uid);
             return snapshot.docs
                 .map((document) {
                   final json = document.data();
@@ -163,7 +218,7 @@ class FirestoreFarmRepository implements FarmRepository {
           })
           .handleError((Object error) => throw firebaseFailure(error));
     } on Object catch (error) {
-      return Stream.error(firebaseFailure(error));
+      throw firebaseFailure(error);
     }
   }
 
@@ -173,26 +228,41 @@ class FirestoreFarmRepository implements FarmRepository {
     EntityKind kind,
     StoredEntity entity,
   ) => firebaseGuard(() async {
+    final uid = _uid;
     FarmDataCodec.validateId(entity.id);
     final data = FarmDataCodec.validatePayload(entity.data);
-    if (kind == EntityKind.harvestBatches)
+    if (kind == EntityKind.harvestBatches) {
       FarmDataCodec.validateHarvestBatch(data);
+    }
     final reference = _entities(farmId, kind).doc(entity.id);
+    await _requireOwnedFarm(farmId, uid);
     final current = await _cachedData(reference);
+    _requireAccount(uid);
     await _synchronization.track(
-      reference.set({
-        'schemaVersion': 1,
-        'data': data,
-        'createdAt': current?['createdAt'] ?? FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }),
+      current == null
+          ? reference.set({
+              'schemaVersion': 1,
+              'data': data,
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            })
+          : reference.update({
+              'schemaVersion': 1,
+              // update replaces the data map, including removal of omitted
+              // fields, while preserving a still-pending createdAt transform.
+              'data': data,
+              'updatedAt': FieldValue.serverTimestamp(),
+            }),
     );
   });
 
   @override
   Future<void> deleteEntity(String farmId, EntityKind kind, String id) =>
       firebaseGuard(() async {
+        final uid = _uid;
         FarmDataCodec.validateId(id);
+        await _requireOwnedFarm(farmId, uid);
+        _requireAccount(uid);
         await _synchronization.track(_entities(farmId, kind).doc(id).delete());
       });
 

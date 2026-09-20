@@ -177,8 +177,9 @@ class SampleFarmRepository implements FarmRepository {
     await readFarm(farmId);
     FarmDataCodec.validateId(entity.id);
     final data = FarmDataCodec.validatePayload(entity.data);
-    if (kind == EntityKind.harvestBatches)
+    if (kind == EntityKind.harvestBatches) {
       FarmDataCodec.validateHarvestBatch(data);
+    }
     final key = '$farmId/${kind.name}';
     final values = [...?_entities[key]]
       ..removeWhere((value) => value.id == entity.id);

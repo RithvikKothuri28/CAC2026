@@ -7,7 +7,7 @@ import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functio
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentDeleted } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
-import { auth as authV1 } from 'firebase-functions/v1';
+import { runWith } from 'firebase-functions/v1';
 import { consumeAiQuota, publishPassport, queueAccountDeletion, removeAccountData, removeFarm, requireFarmAccess, unpublishPassport } from './services';
 import { documentId, object, onlyKeys, renderExplanation, sanitizeExplanationContext, string } from './validation';
 import { renderPassportPage } from './passport_page';
@@ -85,7 +85,7 @@ export const deleteAccount = onCall({ ...callableOptions, timeoutSeconds: 540 },
 });
 
 // Covers account removal through Firebase console/Admin SDK as well as the app.
-export const cleanupDeletedAuthUser = authV1.user().onDelete(async (user) => {
+export const cleanupDeletedAuthUser = runWith({ failurePolicy: true }).auth.user().onDelete(async (user) => {
   await queueAccountDeletion(db, user.uid);
   await removeAccountData(db, getAuth(), user.uid);
 });

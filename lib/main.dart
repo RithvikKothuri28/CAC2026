@@ -40,7 +40,6 @@ class _BootstrapAppState extends State<_BootstrapApp> {
       } catch (failure) {
         cloudError = failure.toString();
       }
-      final sample = await SampleFarmRepository.open();
       final logger = SafeAppLogger(
         development: development,
         reportError: cloud?.privacy.recordError,
@@ -57,7 +56,7 @@ class _BootstrapAppState extends State<_BootstrapApp> {
       if (mounted) {
         setState(
           () => workspace = WorkspaceController(
-            sampleRepository: sample,
+            sampleRepository: null,
             cloud: cloud,
             startupError: cloudError,
           ),

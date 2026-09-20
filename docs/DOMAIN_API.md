@@ -35,3 +35,15 @@ All stored models expose `toJson()`, `fromJson(Map<String,dynamic>)`, and `copyW
 - `LocalExplanationEngine().explain(String question,Farm farm,{OptimizationResult? optimization,MonteCarloResult? risk})` -> dynamic String assembled only from current engine values, relevant field changes and constraints. It calculates the current farm when no run is supplied.
 
 The sample is input only: `assets/sample/sample_farm.json`. Every output is calculated at runtime. JSON fields mirror the constructor names above; enums serialize by `.name`.
+
+## Computational limits and modeling disclosures
+
+Algorithm safety controls are centralized beside the schema constants in `farm_models.dart`: at most 512 optimization fields, 2,048 crop profiles, 250,000 retained field evaluations and a 20,000,000 candidate/frontier comparison budget. The effective candidate budget is the minimum of the user setting and both work ceilings. If either ceiling changes the search, results explicitly report the bounded strategy and actual counts; warnings disclose the effective budget. Unsupported model dimensions throw `OptimizationFailure`. Monte Carlo rejects work exceeding 20,000,000 field-plus-crop factor draws with `SimulationFailure`; iteration limits remain 2–100,000. These are computation controls, never business assumptions.
+
+`OptimizationEngine.evaluate(farm, plan)` additionally exposes a validated single-plan evaluation. `validate:false` is reserved for engine-internal prevalidated iterations. Crop lookup and acreage are cached inside each immutable Farm aggregate.
+
+`LocalExplanationEngine.context/explain` accepts an optional `selected: EvaluatedPlan`; this overrides the run recommendation so explanations follow the user-selected plan. Uncalculated what-if requests direct users to Scenario lab.
+
+Monte Carlo uses mean-corrected lognormal factors. Weather and market correlations are correlations of the underlying normal factors; output Pearson correlations need not be identical. All crop price factors and field yield factors are drawn in fixed model order before assignments are inspected, supporting common random numbers for paired plans. A crop's market shock is shared by every field growing that crop. The analytical resilience proxy likewise aggregates market exposure by crop. It does not include all simulated cost risks and is not a Monte Carlo percentile.
+
+Water availability is modeled around the tightest enabled water cap, or current demand if no cap exists. A shortage proportionally reduces yields of crops with positive water requirements. This is an explicit simplified response curve, not a calibrated agronomic crop-water model. Break-even metrics include acreage-allocated fixed expenses and exclude debt/taxes. Five-year projections preserve the supplied first-year plan, then select highest-margin rotation-compatible replacements as needed; all annual hard constraints are checked and infeasible years are visibly reported. The projection is not a global multi-year optimization.

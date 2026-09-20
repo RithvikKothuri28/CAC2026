@@ -17,7 +17,7 @@ class MonteCarloEngine {
     final supplied = config ?? farm.settings.simulation;
     supplied.validate();
     if (supplied.iterations * (farm.fields.length + farm.crops.length) >
-        20000000) {
+        maximumSimulationFactorDraws) {
       throw const SimulationFailure(
         'This simulation exceeds the supported on-device work budget. Reduce the iteration count.',
       );

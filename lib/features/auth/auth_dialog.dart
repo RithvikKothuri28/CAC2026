@@ -6,15 +6,17 @@ import '../../app/theme/farm_theme.dart';
 import '../../core/widgets/components.dart';
 import '../workspace/workspace_controller.dart';
 
-Future<void> showAuth(
+Future<bool> showAuth(
   BuildContext context,
   WorkspaceController state, {
   bool reauthenticate = false,
 }) async {
-  await showDialog<void>(
-    context: context,
-    builder: (_) => _AuthDialog(state: state, reauthenticate: reauthenticate),
-  );
+  return await showDialog<bool>(
+        context: context,
+        builder: (_) =>
+            _AuthDialog(state: state, reauthenticate: reauthenticate),
+      ) ??
+      false;
 }
 
 class _AuthDialog extends StatefulWidget {
@@ -60,7 +62,7 @@ class _AuthDialogState extends State<_AuthDialog> {
         await auth.signIn(_email.text, _password.text);
       }
       if (!widget.reauthenticate) widget.state.leaveSample();
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context, true);
     } catch (failure) {
       if (mounted) setState(() => error = failure.toString());
     } finally {
@@ -196,7 +198,7 @@ Future<void> createFarmDialog(
   );
   if (!context.mounted) return;
   final form = GlobalKey<FormState>();
-  final name = TextEditingController();
+  var name = '';
   final result = await showDialog<String>(
     context: context,
     builder: (context) => AlertDialog(
@@ -210,7 +212,7 @@ Future<void> createFarmDialog(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextFormField(
-                controller: name,
+                onChanged: (value) => name = value,
                 autofocus: true,
                 decoration: const InputDecoration(labelText: 'Farm name'),
                 validator: (value) =>
@@ -234,7 +236,7 @@ Future<void> createFarmDialog(
         FilledButton(
           onPressed: () {
             if (form.currentState!.validate()) {
-              Navigator.pop(context, name.text.trim());
+              Navigator.pop(context, name.trim());
             }
           },
           child: const Text('Create farm'),
@@ -242,7 +244,6 @@ Future<void> createFarmDialog(
       ],
     ),
   );
-  name.dispose();
   if (result != null) {
     await state.perform('Creating farm', () => state.createFarm(result));
   }

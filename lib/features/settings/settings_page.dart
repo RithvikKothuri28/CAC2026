@@ -48,7 +48,7 @@ class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key, required this.state});
   final WorkspaceController state;
   Future<void> import(BuildContext context) async {
-    final controller = TextEditingController();
+    var enteredText = '';
     final text = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -56,7 +56,7 @@ class SettingsPage extends StatelessWidget {
         content: SizedBox(
           width: 600,
           child: TextField(
-            controller: controller,
+            onChanged: (value) => enteredText = value,
             minLines: 8,
             maxLines: 16,
             decoration: const InputDecoration(
@@ -70,13 +70,12 @@ class SettingsPage extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
+            onPressed: () => Navigator.pop(context, enteredText),
             child: const Text('Validate & import'),
           ),
         ],
       ),
     );
-    controller.dispose();
     if (text != null) {
       await state.perform('Importing farm', () async {
         await state.saveFarm(
@@ -93,8 +92,12 @@ class SettingsPage extends StatelessWidget {
     final privacy = cloud?.privacy.current;
     Future<void> updatePrivacy(UserSettings settings) =>
         state.perform('Saving privacy settings', () async {
-          await cloud!.privacy.apply(settings);
-          await cloud.settings.save(settings);
+          final uid = cloud!.auth.currentUser?.uid;
+          if (uid == null) {
+            throw const AuthenticationFailure('Sign in to save preferences.');
+          }
+          await cloud.privacy.apply(settings);
+          await cloud.settings.save(settings, expectedUid: uid);
         });
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -301,7 +304,13 @@ class SettingsPage extends StatelessWidget {
                             return;
                           }
                           if (!context.mounted) return;
-                          await showAuth(context, state, reauthenticate: true);
+                          if (!await showAuth(
+                            context,
+                            state,
+                            reauthenticate: true,
+                          )) {
+                            return;
+                          }
                           if (!context.mounted) return;
                           if (await confirmAction(
                             context,

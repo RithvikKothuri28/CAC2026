@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:convert';
 import '../models/farm_models.dart';
 import '../models/results.dart';
 import 'financial_engine.dart';
@@ -88,7 +89,8 @@ class OptimizationEngine {
     farm.validate(requireReady: true);
     farm.validatePlan(farm.currentPlan);
     final config = farm.settings.optimization;
-    if (farm.fields.length > 512 || farm.crops.length > 2048) {
+    if (farm.fields.length > maximumOptimizationFields ||
+        farm.crops.length > maximumOptimizationCrops) {
       throw const OptimizationFailure(
         'This farm exceeds the supported on-device model capacity (512 fields, 2,048 crop profiles).',
       );
@@ -116,7 +118,13 @@ class OptimizationEngine {
     }
     // Bound retained per-field results, in addition to user-selected limits.
     // This is a computational safety bound, not a farm assumption.
-    final safeCandidateLimit = math.max(1, 2000000 ~/ farm.fields.length);
+    final safeCandidateLimit = math.max(
+      1,
+      math.min(
+        maximumRetainedFieldEvaluations ~/ farm.fields.length,
+        maximumParetoComparisons ~/ config.frontierLimit,
+      ),
+    );
     final exhaustive =
         searchSpace <=
         BigInt.from(math.min(config.exhaustiveLimit, safeCandidateLimit));
@@ -145,7 +153,7 @@ class OptimizationEngine {
         .expand((r) => r.restrictedInputs)
         .toSet();
     bool visit(List<String> allocation) {
-      final key = allocation.join('\u001f');
+      final key = jsonEncode(allocation);
       if (!seen.add(key)) return false;
       generated++;
       for (var i = 0; i < allocation.length; i++) {
@@ -349,6 +357,9 @@ class OptimizationEngine {
       warnings: [
         if (!exhaustive)
           'The search space exceeds the exhaustive limit. This bounded, seeded search does not guarantee a global optimum.',
+        if (safeCandidateLimit < config.candidateLimit ||
+            safeCandidateLimit < config.exhaustiveLimit)
+          'For ${farm.fields.length} fields and a frontier limit of ${config.frontierLimit}, the device work and memory ceilings cap candidate evaluations at $safeCandidateLimit. This run uses a budget of $budget; generated counts report the work actually completed.',
         if (frontierTruncated)
           'The configured frontier storage limit was reached. Displayed tradeoffs are a bounded subset; the highest weighted score still uses every evaluated feasible plan.',
         if (feasible.isEmpty)
