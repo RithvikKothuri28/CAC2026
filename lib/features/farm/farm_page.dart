@@ -173,6 +173,97 @@ class FarmPage extends StatelessWidget {
       ),
       Column(
         children: [
+          if (state.financial != null) ...[
+            SectionCard(
+              title: 'Calculated annual finances',
+              subtitle: 'Current allocation · $cc',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ResponsiveGrid(
+                    minWidth: 180,
+                    children: [
+                      Metric(
+                        label: 'REVENUE',
+                        value: currency(state.financial!.revenue, cc),
+                        icon: Icons.payments_outlined,
+                      ),
+                      Metric(
+                        label: 'OPERATING COST',
+                        value: currency(state.financial!.operatingExpense, cc),
+                        icon: Icons.receipt_long_outlined,
+                      ),
+                      Metric(
+                        label: 'CASH AFTER DEBT',
+                        value: currency(state.financial!.cashAfterDebt, cc),
+                        icon: Icons.account_balance_wallet_outlined,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  ...state.financial!.costBreakdown.entries.map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(humanize(entry.key))),
+                          Text(currency(entry.value, cc)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Debt service coverage: ${state.financial!.debtCoverage == null ? 'Not applicable (no payment)' : '${number(state.financial!.debtCoverage!)}×'}',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            SectionCard(
+              title: 'Field economics & break-even',
+              subtitle:
+                  'Break-even includes acreage-allocated fixed expense; excludes debt and tax.',
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Field')),
+                    DataColumn(label: Text('Contribution'), numeric: true),
+                    DataColumn(label: Text('Break-even price'), numeric: true),
+                    DataColumn(label: Text('Break-even yield'), numeric: true),
+                  ],
+                  rows: state.financial!.fields
+                      .map(
+                        (field) => DataRow(
+                          cells: [
+                            DataCell(Text(farm.field(field.fieldId).name)),
+                            DataCell(
+                              Text(currency(field.contributionMargin, cc)),
+                            ),
+                            DataCell(
+                              Text(
+                                field.breakEvenPrice == null
+                                    ? 'Undefined'
+                                    : '$cc ${number(field.breakEvenPrice!)} / ${farm.crop(field.cropId).yieldUnit}',
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                field.breakEvenYield == null
+                                    ? 'Undefined'
+                                    : '${number(field.breakEvenYield!)} ${farm.crop(field.cropId).yieldUnit}/acre',
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
           SectionCard(
             title: 'Fixed operating expenses',
             subtitle: 'Annual farm-wide costs, separate from crop inputs',

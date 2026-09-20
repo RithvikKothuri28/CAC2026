@@ -4,10 +4,10 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { documentId, JsonMap, sanitizePassport } from './validation';
 
 export async function requireFarmAccess(db: Firestore, farmId: string, uid: string, ownerOnly = false): Promise<void> {
-  const [farm, deletion] = await Promise.all([
-    db.doc(`farms/${farmId}`).get(), db.doc(`accountDeletionRequests/${uid}`).get(),
+  const [farm, deletion, deletedAccount] = await Promise.all([
+    db.doc(`farms/${farmId}`).get(), db.doc(`accountDeletionRequests/${uid}`).get(), db.doc(`deletedAccounts/${uid}`).get(),
   ]);
-  if (deletion.exists || !farm.exists || farm.get('deletionState') === 'deleting') {
+  if (deletion.exists || deletedAccount.exists || !farm.exists || farm.get('deletionState') === 'deleting') {
     throw new HttpsError('permission-denied', 'This farm is unavailable to this account.');
   }
   const ownerId = farm.get('ownerId');
@@ -28,14 +28,15 @@ export async function publishPassport(db: Firestore, uid: string, farmId: string
   // Re-publication replaces the same public document, removing any deselected fields.
   const mappingRef = farmRef.collection('passportPublications').doc(batchId);
   return db.runTransaction(async (tx) => {
-    const [farm, batch, mapping, deletion] = await Promise.all([
-      tx.get(farmRef), tx.get(batchRef), tx.get(mappingRef), tx.get(db.doc(`accountDeletionRequests/${uid}`)),
+    const [farm, batch, mapping, deletion, deletedAccount] = await Promise.all([
+      tx.get(farmRef), tx.get(batchRef), tx.get(mappingRef), tx.get(db.doc(`accountDeletionRequests/${uid}`)), tx.get(db.doc(`deletedAccounts/${uid}`)),
     ]);
-    if (deletion.exists || !farm.exists || farm.get('ownerId') !== uid || farm.get('deletionState') === 'deleting') {
+    if (deletion.exists || deletedAccount.exists || !farm.exists || farm.get('ownerId') !== uid || farm.get('deletionState') === 'deleting') {
       throw new HttpsError('permission-denied', 'Only the farm owner may publish a passport.');
     }
     if (!batch.exists) throw new HttpsError('not-found', 'Harvest batch does not exist.');
     const safe = sanitizePassport(batch.get('data'), fields);
+    if (farm.get('source') === 'sample') safe.provenance = 'sample';
     const passportId = mapping.exists ? documentId(mapping.get('passportId'), 'Passport ID') : db.collection('publicHarvestPassports').doc().id;
     tx.set(db.doc(`publicHarvestPassports/${passportId}`), { ...safe, publishedAt: FieldValue.serverTimestamp() });
     tx.set(mappingRef, { passportId, batchId, publishedAt: FieldValue.serverTimestamp() });
@@ -46,7 +47,12 @@ export async function publishPassport(db: Firestore, uid: string, farmId: string
 export async function unpublishPassport(db: Firestore, uid: string, farmId: string, passportId: string): Promise<void> {
   await requireFarmAccess(db, farmId, uid, true);
   const mappings = await db.collection(`farms/${farmId}/passportPublications`).where('passportId', '==', passportId).get();
-  if (mappings.empty) throw new HttpsError('not-found', 'This passport is not published by this farm.');
+  if (mappings.empty) {
+    // A lost response must not leave the client unable to finish unpublication.
+    // An existing passport belonging elsewhere is never touched.
+    if (!(await db.doc(`publicHarvestPassports/${passportId}`).get()).exists) return;
+    throw new HttpsError('not-found', 'This passport is not published by this farm.');
+  }
   const batch = db.batch();
   batch.delete(db.doc(`publicHarvestPassports/${passportId}`));
   for (const mapping of mappings.docs) batch.delete(mapping.ref);

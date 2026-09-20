@@ -37,16 +37,28 @@ class WorkspaceController extends ChangeNotifier {
     this.startupError,
   }) {
     if (cloud != null) {
-      _authSubscription = cloud!.auth.authStateChanges.listen((user) {
-        _restorePrivacy(user?.uid);
-        if (!sampleMode) {
-          _listen(user == null ? null : cloud!.farms);
-        }
-        notifyListeners();
-      });
+      _authSubscription = cloud!.auth.authStateChanges.listen(
+        (user) {
+          if (_disposed) return;
+          _restorePrivacy(user?.uid);
+          if (!sampleMode) {
+            _listen(user == null ? null : cloud!.farms);
+          }
+          notifyListeners();
+        },
+        onError: (Object failure) {
+          if (_disposed) return;
+          if (!sampleMode) _listen(null);
+          cloud!.privacy
+              .bindAccount(null, () async => const UserSettings())
+              .catchError((Object _) {});
+          error = 'Authentication could not be confirmed. Sign in again.';
+          notifyListeners();
+        },
+      );
     }
   }
-  final SampleFarmRepository sampleRepository;
+  SampleFarmRepository? sampleRepository;
   final FirebaseServices? cloud;
   final String? startupError;
   StreamSubscription<dynamic>? _authSubscription;
@@ -65,8 +77,11 @@ class WorkspaceController extends ChangeNotifier {
   MultiYearComparison? projection;
   Farm? scenarioFarm;
   OptimizationResult? scenarioResult;
+  RiskComparison? scenarioRisk;
   String? scenarioName;
   int _revision = 0;
+  int _workspaceEpoch = 0;
+  int _subscriptionEpoch = 0;
   int get revision => _revision;
   bool _disposed = false;
   Future<void> _restorePrivacy(String? uid) async {
@@ -91,7 +106,12 @@ class WorkspaceController extends ChangeNotifier {
       : null;
 
   void _listen(FarmRepository? next) {
+    _workspaceEpoch++;
+    final subscriptionEpoch = ++_subscriptionEpoch;
     _farmsSubscription?.cancel();
+    // Permission errors from the former account (including deletion freezing
+    // its live query) do not belong to the newly selected workspace.
+    error = null;
     repository = next;
     farms = [];
     farm = null;
@@ -99,6 +119,7 @@ class WorkspaceController extends ChangeNotifier {
     if (next != null) {
       _farmsSubscription = next.watchFarms().listen(
         (values) {
+          if (_disposed || subscriptionEpoch != _subscriptionEpoch) return;
           farms = values;
           final matching = values.where((value) => value.id == farm?.id);
           final updated = matching.isNotEmpty
@@ -111,6 +132,7 @@ class WorkspaceController extends ChangeNotifier {
           notifyListeners();
         },
         onError: (Object failure) {
+          if (_disposed || subscriptionEpoch != _subscriptionEpoch) return;
           error = failure.toString();
           notifyListeners();
         },
@@ -121,13 +143,14 @@ class WorkspaceController extends ChangeNotifier {
 
   Future<void> openSample({bool reset = false}) async {
     await perform('Loading Sample Farm', () async {
+      final sample = sampleRepository ??= await SampleFarmRepository.open();
       sampleMode = true;
-      _listen(sampleRepository);
-      final stored = await sampleRepository.watchFarms().first;
+      _listen(sample);
+      final stored = await sample.watchFarms().first;
       final loaded = reset || stored.isEmpty
-          ? await sampleRepository.loadSample()
+          ? await sample.loadSample()
           : stored.first;
-      farms = await sampleRepository.watchFarms().first;
+      farms = await sample.watchFarms().first;
       farm = loaded;
       _invalidate();
     });
@@ -139,6 +162,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void selectFarm(Farm value) {
+    _workspaceEpoch++;
     farm = value;
     _invalidate();
     notifyListeners();
@@ -152,14 +176,17 @@ class WorkspaceController extends ChangeNotifier {
     projection = null;
     scenarioFarm = null;
     scenarioResult = null;
+    scenarioRisk = null;
     scenarioName = null;
   }
 
   Future<void> saveFarm(Farm value) async {
     value.validate();
     final repo = repository;
+    final epoch = _workspaceEpoch;
     if (repo == null) throw StateError('Sign in before saving a farm.');
     await repo.saveFarm(value);
+    if (_disposed || epoch != _workspaceEpoch || repository != repo) return;
     farm = value;
     _invalidate();
     notifyListeners();
@@ -234,23 +261,41 @@ class WorkspaceController extends ChangeNotifier {
         if (revision != _revision) return;
         scenarioFarm = modified;
         scenarioResult = result;
+        scenarioRisk = null;
         scenarioName = scenario.name;
       });
 
-  Future<void> saveRun(bool simulation) async =>
+  Future<void> simulateScenario() async =>
+      perform('Simulating scenario uncertainty', () async {
+        final snapshot = scenarioFarm;
+        final run = scenarioResult;
+        if (snapshot == null || run == null) return;
+        final revision = _revision;
+        final result = await compute(simulateFarm, (
+          snapshot,
+          run.recommended?.plan,
+        ));
+        if (revision == _revision && identical(run, scenarioResult)) {
+          scenarioRisk = result;
+        }
+      });
+
+  Future<void> saveRun(bool simulation, {bool scenario = false}) async =>
       perform('Saving calculated summary', () async {
+        final savedRisk = scenario ? scenarioRisk : risk;
+        final savedOptimization = scenario ? scenarioResult : optimization;
         final result = simulation
             ? <String, dynamic>{
-                'current': risk!.current.toJson(),
-                if (risk!.alternative != null)
-                  'alternative': risk!.alternative!.toJson(),
+                'current': savedRisk!.current.toJson(),
+                if (savedRisk.alternative != null)
+                  'alternative': savedRisk.alternative!.toJson(),
               }
             : <String, dynamic>{
-                'current': optimization!.current.toJson(),
-                'recommended': optimization!.recommended?.toJson(),
-                'diagnostics': optimization!.diagnostics.toJson(),
-                'warnings': optimization!.warnings,
-                'representatives': optimization!.representatives.map(
+                'current': savedOptimization!.current.toJson(),
+                'recommended': savedOptimization.recommended?.toJson(),
+                'diagnostics': savedOptimization.diagnostics.toJson(),
+                'warnings': savedOptimization.warnings,
+                'representatives': savedOptimization.representatives.map(
                   (key, value) => MapEntry(key, value.toJson()),
                 ),
               };
@@ -262,8 +307,11 @@ class WorkspaceController extends ChangeNotifier {
             data: {
               'schemaVersion': 1,
               'createdAt': DateTime.now().toUtc().toIso8601String(),
-              'input': farm!.toJson(),
-              'selectedPlan': selected?.plan.toJson(),
+              if (scenario) 'scenarioName': scenarioName,
+              'input': (scenario ? scenarioFarm! : farm!).toJson(),
+              'selectedPlan':
+                  (scenario ? scenarioResult!.recommended : selected)?.plan
+                      .toJson(),
               'result': result,
             },
           ),
@@ -315,7 +363,7 @@ class WorkspaceController extends ChangeNotifier {
     _revision++;
     _authSubscription?.cancel();
     _farmsSubscription?.cancel();
-    sampleRepository.close();
+    sampleRepository?.close();
     super.dispose();
   }
 }

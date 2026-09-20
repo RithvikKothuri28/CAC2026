@@ -235,7 +235,12 @@ class _ModelEditorState extends State<_ModelEditor> {
             if (integer && parsed != parsed.roundToDouble()) {
               return 'Enter a whole number';
             }
-          } else if (['name', 'yieldUnit', 'currencyCode'].contains(key) &&
+          } else if ([
+                'name',
+                'yieldUnit',
+                'currencyCode',
+                'rotationFamily',
+              ].contains(key) &&
               (input ?? '').trim().isEmpty) {
             return 'This value is required';
           }
@@ -243,7 +248,7 @@ class _ModelEditorState extends State<_ModelEditor> {
         },
         onSaved: (input) {
           map[key] = item is num && integer
-              ? int.parse(input!)
+              ? num.parse(input!).toInt()
               : item is num
               ? double.parse(input!)
               : item is List

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "923406327267",
+    "project_id": "farmtwin-f64bd",
+    "storage_bucket": "farmtwin-f64bd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:923406327267:android:bd90de71d9968206ba54d6",
+        "android_client_info": {
+          "package_name": "org.farmtwin.farmtwin.dev"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "923406327267-s5mpjrdfcef4cupb88n8u40lmvtlp7nd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDcwUvvNcF0-TAUB990ZKos3gX-tA04MM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "923406327267-s5mpjrdfcef4cupb88n8u40lmvtlp7nd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

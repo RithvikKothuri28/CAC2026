@@ -108,4 +108,48 @@ void main() {
       expect((saved!['weights'] as Map)['profit'], 0.75);
     },
   );
+
+  testWidgets(
+    'integer form accepts whole decimal and exponent notation and rejects fractions',
+    (tester) async {
+      Map<String, dynamic>? saved;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                child: const Text('Edit'),
+                onPressed: () async {
+                  saved = await editModel(
+                    context,
+                    title: 'Simulation settings',
+                    initial: {'seed': 1, 'iterations': 500},
+                    validate: (_) {},
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+      final fields = find.byType(TextFormField);
+      await tester.enterText(fields.first, '1.0');
+      await tester.enterText(fields.at(1), '1.5');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a whole number'), findsOneWidget);
+      expect(saved, isNull);
+      expect(tester.takeException(), isNull);
+
+      await tester.enterText(fields.at(1), '1e3');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(saved, {'seed': 1, 'iterations': 1000});
+      expect(saved!['seed'], isA<int>());
+      expect(saved!['iterations'], isA<int>());
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

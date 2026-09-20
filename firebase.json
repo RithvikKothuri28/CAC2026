@@ -1,11 +1,1 @@
-{
-  "functions": [{ "source": "functions", "codebase": "farmtwin", "runtime": "nodejs22", "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"] }],
-  "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },
-  "emulators": {
-    "auth": { "host": "127.0.0.1", "port": 9099 },
-    "firestore": { "host": "127.0.0.1", "port": 8080 },
-    "functions": { "host": "127.0.0.1", "port": 5001 },
-    "ui": { "enabled": false },
-    "singleProjectMode": true
-  }
-}
+{"functions":[{"source":"functions","codebase":"farmtwin","runtime":"nodejs22","predeploy":["npm --prefix \"$RESOURCE_DIR\" run build"]}],"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"emulators":{"auth":{"host":"127.0.0.1","port":9099},"firestore":{"host":"127.0.0.1","port":8080},"functions":{"host":"127.0.0.1","port":5001},"ui":{"enabled":false},"singleProjectMode":true},"flutter":{"platforms":{"android":{"default":{"projectId":"farmtwin-f64bd","appId":"1:923406327267:android:bd90de71d9968206ba54d6","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"farmtwin-f64bd","configurations":{"android":"1:923406327267:android:bd90de71d9968206ba54d6","ios":"1:923406327267:ios:003f20ca9a561057ba54d6","web":"1:923406327267:web:fe7082ad4e4e5c78ba54d6"}}}}}}

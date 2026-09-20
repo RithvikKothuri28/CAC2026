@@ -78,6 +78,9 @@ export function sanitizePassport(batch: unknown, selection: unknown): JsonMap {
       case 'inputRecords': case 'handlingEvents': case 'storageEvents': result[field] = eventList(source[field], field); break;
     }
   }
+  if (typeof result.plantingDate === 'string' && typeof result.harvestDate === 'string' && result.harvestDate < result.plantingDate) {
+    throw new HttpsError('invalid-argument', 'Harvest date must be on or after planting date.');
+  }
   return result;
 }
 

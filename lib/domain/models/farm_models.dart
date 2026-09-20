@@ -3,6 +3,14 @@ import 'dart:math' as math;
 const currentSchemaVersion = 1;
 const numericTolerance = 1e-9;
 
+// Computational safety ceilings. These limit work and retained result objects;
+// they are algorithm controls, never agricultural or financial assumptions.
+const maximumOptimizationFields = 512;
+const maximumOptimizationCrops = 2048;
+const maximumRetainedFieldEvaluations = 250000;
+const maximumParetoComparisons = 20000000;
+const maximumSimulationFactorDraws = 20000000;
+
 abstract class DomainFailure implements Exception {
   final String message;
   final Map<String, Object?> details;
@@ -1228,18 +1236,26 @@ class Farm {
     scenarios: scenarios ?? this.scenarios,
     schemaVersion: schemaVersion ?? this.schemaVersion,
   );
-  double get acreage => fields.fold(0.0, (sum, field) => sum + field.acres);
+  late final double _acreage = fields.fold(
+    0.0,
+    (sum, field) => sum + field.acres,
+  );
+  late final Map<String, CropProfile> _cropIndex = {
+    for (final value in crops) value.id: value,
+  };
+  late final Map<String, Field> _fieldIndex = {
+    for (final value in fields) value.id: value,
+  };
+  double get acreage => _acreage;
   FarmPlan get currentPlan => FarmPlan(
     assignments: {for (final field in fields) field.id: field.currentCropId},
   );
-  CropProfile crop(String id) => crops.firstWhere(
-    (c) => c.id == id,
-    orElse: () => throw DataUnavailableFailure('Crop $id is unavailable.'),
-  );
-  Field field(String id) => fields.firstWhere(
-    (f) => f.id == id,
-    orElse: () => throw DataUnavailableFailure('Field $id is unavailable.'),
-  );
+  CropProfile crop(String id) =>
+      _cropIndex[id] ??
+      (throw DataUnavailableFailure('Crop $id is unavailable.'));
+  Field field(String id) =>
+      _fieldIndex[id] ??
+      (throw DataUnavailableFailure('Field $id is unavailable.'));
   void validate({bool requireReady = false}) {
     _text(id, 'Farm id');
     _text(name, 'Farm name');
@@ -1274,6 +1290,9 @@ class Farm {
     for (final f in fields) {
       f.validate();
       for (final id in f.compatibleCropIds) {
+        crop(id);
+      }
+      for (final id in f.cropHistory) {
         crop(id);
       }
       if (f.currentCropId.isNotEmpty) {

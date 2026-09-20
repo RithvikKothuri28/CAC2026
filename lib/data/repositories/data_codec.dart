@@ -49,8 +49,9 @@ class FarmDataCodec {
     ]) {
       if (!data.containsKey(key)) continue;
       final list = data[key];
-      if (list is! List || list.length > 40)
+      if (list is! List || list.length > 40) {
         throw DataValidationFailure('$key must contain at most 40 records.');
+      }
       for (final entry in list) {
         if (key == 'practices') {
           textValue(entry, key, 200);
@@ -64,8 +65,9 @@ class FarmDataCodec {
         }
         textValue(entry['name'], '$key name', 200);
         if (entry.containsKey('date')) dateValue(entry['date'], '$key date');
-        if (entry.containsKey('details'))
+        if (entry.containsKey('details')) {
           textValue(entry['details'], '$key details', 500);
+        }
       }
     }
   }

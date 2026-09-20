@@ -14,10 +14,12 @@ class FarmSyncStatus {
   final AppFailure? failure;
   String get message {
     if (failure != null) return failure!.message;
-    if (hasPendingWrites)
+    if (hasPendingWrites) {
       return 'Changes queued on this device · awaiting cloud confirmation';
-    if (isFromCache)
+    }
+    if (isFromCache) {
       return 'Using cached farm data · cloud connection not confirmed';
+    }
     return 'All changes confirmed by the cloud';
   }
 }

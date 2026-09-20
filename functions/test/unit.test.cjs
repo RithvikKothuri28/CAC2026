@@ -9,6 +9,7 @@ test('public page escapes farmer HTML and omits unknown properties', () => {
   assert.match(page, /Hello &amp; goodbye/);
   assert.equal(page.includes('<script>'), false);
   assert.equal(page.includes('SECRET_OWNER'), false);
+  assert.match(renderPassportPage({ crop: 'Example crop', provenance: 'sample' }), /Sample Farm/);
 });
 
 test('passport selected allowlist excludes every unselected private value', () => {
@@ -21,6 +22,7 @@ test('passport validates nested events, dates, publication keys and duplicates',
     assert.throws(() => sanitizePassport({ crop: 'Test', field: 'Field' }, fields), { code: 'invalid-argument' });
   }
   assert.throws(() => sanitizePassport({ crop: 'Test', plantingDate: '2026-02-30' }, ['crop', 'plantingDate']), { code: 'invalid-argument' });
+  assert.throws(() => sanitizePassport({ crop: 'Test', plantingDate: '2026-03-01', harvestDate: '2026-02-01' }, ['crop', 'plantingDate', 'harvestDate']), { code: 'invalid-argument' });
   assert.throws(() => sanitizePassport({ crop: 'Test', inputRecords: [{ name: 'Input', cost: 10 }] }, ['crop', 'inputRecords']), { code: 'invalid-argument' });
   assert.throws(() => sanitizePassport({ crop: 'Test' }, ['crop', 'notes']), { code: 'invalid-argument' });
   const result = sanitizePassport({ crop: 'Test', handlingEvents: [{ name: 'Washed', date: '2026-03-01', details: 'Farmer reported' }] }, ['crop', 'handlingEvents']);

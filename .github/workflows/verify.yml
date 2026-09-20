@@ -1,0 +1,81 @@
+name: Verify FarmTwin
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test integration_test test_driver
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build web --release
+  firebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+        working-directory: functions
+      - run: npm test
+        working-directory: functions
+      - run: npm audit --omit=dev
+        working-directory: functions
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FUNCTIONS_DISCOVERY_TIMEOUT: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: browser-actions/setup-chrome@v2
+        id: chrome
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+      - run: flutter pub get
+      - run: npm ci && npm run build
+        working-directory: functions
+      - name: Run real browser workflows against local emulators
+        env:
+          CHROME_EXECUTABLE: ${{ steps.chrome.outputs.chrome-path }}
+          CHROMEDRIVER_EXECUTABLE: ${{ steps.chrome.outputs.chromedriver-path }}
+        run: functions/node_modules/.bin/firebase emulators:exec --project demo-farmtwin --only auth,firestore,functions 'bash scripts/browser-integration.sh'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-logs
+          path: |
+            test-results/
+            *-debug.log
+            functions/*-debug.log
+          retention-days: 7

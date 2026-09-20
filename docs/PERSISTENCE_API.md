@@ -1,6 +1,6 @@
 # Persistence integration
 
-Imports will be exported by `lib/data/data.dart` and `lib/app/config/app_config.dart`.
+Imports are exported by `lib/data/data.dart` and `lib/app/config/app_config.dart`.
 
 `AppConfig.fromEnvironment()` validates explicit development/staging/production compile-time configuration. `FirebaseBootstrap.initialize(config)` returns `FirebaseServices?`; null means no Firebase configured in development. Configuration/init failures are typed `AppFailure` exceptions and must be visible; never load sample inputs automatically. Missing cloud setup still allows explicit Sample Farm.
 
@@ -18,7 +18,9 @@ Fields, crop profiles, constraints, expenses, debts and histories use the typed 
 
 `FarmExportService.exportFarm(Farm)` -> JSON string; `importFarm(String,{required String id})` -> validated Farm with imported provenance. No implicit save or change to owner from imported JSON.
 
-`UserSettings` has `analyticsConsent`, `crashReportingConsent`, `cloudAssistantConsent`. `FirestoreSettingsRepository.read()/save(settings)`. `FirebasePrivacyService.apply(settings)` applies persisted local consent immediately and updates actual SDK switches. Settings default false.
+`UserSettings` has `analyticsConsent`, `crashReportingConsent`, `cloudAssistantConsent`. `FirestoreSettingsRepository.read()/save(settings, expectedUid: uid)`. Settings and farm writes share bounded acknowledgment tracking so offline writes remain queued without blocking forms indefinitely. The account captured by a privacy action must match before its cloud write. `FirebasePrivacyService.bindAccount(uid, readRemote)` restores only that account's consent; `apply(settings)` persists the choice and updates SDK switches. Settings default false. Browser analytics initialization is deferred until consent; emulators never instantiate telemetry SDKs.
+
+The current Flutter repository and workspace expose owner accounts only; member-management UI is not implemented. The adapter checks the active account and cached parent ownership before exposing records or queueing edits, including after asynchronous reads. This is necessary because a Firestore device-cache read does not itself re-evaluate server security rules. The backend role rules are tested separately from this owner-only client scope.
 
 `HarvestPassportService.publish({farmId,batchId,fields})` -> public ID; `unpublish({farmId,passportId})`; `publicUrl(id)` -> configured URL (throws if missing). Batch entity `data` fields: crop, field, plantingDate, harvestDate, practices, inputRecords, handlingEvents, storageEvents, notes. Only explicitly selected fields are copied by server; crop is required.
 
