@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null
+        && !exists(/databases/$(database)/documents/accountDeletionRequests/$(request.auth.uid))
+        && !exists(/databases/$(database)/documents/deletedAccounts/$(request.auth.uid));
+    }
+    function farm(id) { return get(/databases/$(database)/documents/farms/$(id)); }
+    function active(id) {
+      return farm(id).data.get('deletionState', '') != 'deleting'
+        && !exists(/databases/$(database)/documents/accountDeletionRequests/$(farm(id).data.ownerId));
+    }
+    function owner(id) { return signedIn() && farm(id).data.ownerId == request.auth.uid; }
+    function memberRole(id) {
+      return get(/databases/$(database)/documents/farms/$(id)/members/$(request.auth.uid)).data.role;
+    }
+    function reader(id) { return signedIn() && active(id) && (owner(id) || memberRole(id) in ['editor', 'viewer']); }
+    function editor(id) { return signedIn() && active(id) && (owner(id) || memberRole(id) == 'editor'); }
+    function timestampedCreate() {
+      return request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+    }
+    function timestampedUpdate() {
+      return request.resource.data.createdAt == resource.data.createdAt && request.resource.data.updatedAt == request.time;
+    }
+    function farmShape() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['schemaVersion', 'ownerId', 'name', 'createdAt', 'updatedAt', 'data', 'source'])
+        && d.keys().hasOnly(['schemaVersion', 'ownerId', 'name', 'createdAt', 'updatedAt', 'data', 'source'])
+        && d.schemaVersion == 1 && d.ownerId is string && d.data is map
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.source in ['userEntered', 'imported', 'sample'];
+    }
+    function entityShape() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['schemaVersion', 'createdAt', 'updatedAt', 'data'])
+        && d.keys().hasOnly(['schemaVersion', 'createdAt', 'updatedAt', 'data'])
+        && d.schemaVersion == 1 && d.data is map;
+    }
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['schemaVersion', 'settings', 'createdAt', 'updatedAt'])
+        && request.resource.data.schemaVersion == 1 && request.resource.data.settings is map
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    match /farms/{farmId} {
+      allow get: if reader(farmId);
+      // Ownership must be evaluated against query resource, not get(farmId), for query proofs.
+      allow list: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if signedIn() && !exists(/databases/$(database)/documents/farms/$(farmId));
+      allow create: if signedIn() && farmShape() && request.resource.data.ownerId == request.auth.uid && timestampedCreate();
+      allow update: if editor(farmId) && farmShape() && request.resource.data.ownerId == resource.data.ownerId && timestampedUpdate();
+      // Server callable first freezes writes, then recursively deletes descendants and passports.
+      allow delete: if false;
+      match /members/{uid} {
+        allow read: if reader(farmId);
+        allow create, update: if owner(farmId) && active(farmId) && uid != farm(farmId).data.ownerId
+          && request.resource.data.keys().hasOnly(['userId', 'role', 'createdAt'])
+          && request.resource.data.userId == uid
+          && request.resource.data.role in ['viewer', 'editor'];
+        allow delete: if owner(farmId) && active(farmId) && uid != farm(farmId).data.ownerId;
+      }
+      match /{collection}/{entityId} {
+        allow read: if reader(farmId) && collection in ['fields', 'cropProfiles', 'cropHistory', 'expenses', 'debts', 'constraints', 'scenarios', 'optimizationRuns', 'simulationRuns', 'harvestBatches', 'settings', 'passportPublications'];
+        allow create: if editor(farmId) && collection in ['fields', 'cropProfiles', 'cropHistory', 'expenses', 'debts', 'constraints', 'scenarios', 'optimizationRuns', 'simulationRuns', 'harvestBatches', 'settings'] && entityShape() && timestampedCreate();
+        allow update: if editor(farmId) && collection in ['fields', 'cropProfiles', 'cropHistory', 'expenses', 'debts', 'constraints', 'scenarios', 'optimizationRuns', 'simulationRuns', 'harvestBatches', 'settings'] && entityShape() && timestampedUpdate();
+        allow delete: if editor(farmId) && collection in ['fields', 'cropProfiles', 'cropHistory', 'expenses', 'debts', 'constraints', 'scenarios', 'optimizationRuns', 'simulationRuns', 'harvestBatches', 'settings'];
+      }
+    }
+    match /publicHarvestPassports/{passportId} {
+      allow get: if true;
+      allow list, write: if false;
+    }
+    // Server-only quotas, deletion jobs, reverse publication mappings, and any future collection.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

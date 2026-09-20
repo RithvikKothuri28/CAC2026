@@ -1,0 +1,32 @@
+{
+  "currencyCode": "USD",
+  "optimization": {
+    "weights": {
+      "profit": 1,
+      "resilience": 0,
+      "waterEfficiency": 0,
+      "inputEfficiency": 0,
+      "practiceAlignment": 0,
+      "diversification": 0
+    },
+    "exhaustiveLimit": 100000,
+    "candidateLimit": 20000,
+    "frontierLimit": 300,
+    "seed": 0
+  },
+  "simulation": {
+    "iterations": 2000,
+    "seed": 0,
+    "weatherCorrelation": 0,
+    "marketCorrelation": 0,
+    "fertilizerVolatility": 0,
+    "fuelVolatility": 0,
+    "waterVolatility": 0,
+    "equipmentFailureProbability": 0,
+    "equipmentFailureCost": 0
+  },
+  "priceGrowthRate": 0,
+  "expenseInflationRate": 0,
+  "liquidityReserve": 0,
+  "alertUtilizationThreshold": 1
+}

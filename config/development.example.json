@@ -1,0 +1,11 @@
+{
+  "ENVIRONMENT": "development",
+  "USE_FIREBASE_EMULATORS": true,
+  "FIREBASE_PROJECT_ID": "demo-farmtwin",
+  "FIREBASE_API_KEY": "demo-farmtwin-emulator-only",
+  "FIREBASE_APP_ID": "1:123456789:web:farmtwin-emulator",
+  "FIREBASE_MESSAGING_SENDER_ID": "123456789",
+  "FIREBASE_AUTH_DOMAIN": "demo-farmtwin.firebaseapp.com",
+  "FIREBASE_EMULATOR_HOST": "127.0.0.1",
+  "PUBLIC_PASSPORT_BASE_URL": "http://127.0.0.1:5001/demo-farmtwin/us-central1/publicPassport"
+}
