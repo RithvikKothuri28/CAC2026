@@ -24,10 +24,13 @@ class FarmSyncStatus {
   }
 }
 
-/// Bounds the UI wait without cancelling Firestore's queue. Late rejection is
-/// published to sync state; the acknowledgement is never silently discarded.
+/// Bounds the UI wait without pretending an unacknowledged write succeeded.
+/// Firestore retains its pending queue; a timeout throws and late completion is
+/// published to sync state without becoming an unhandled asynchronous error.
 class WriteSynchronization {
-  WriteSynchronization({this.acknowledgementWait = const Duration(seconds: 3)});
+  WriteSynchronization({
+    this.acknowledgementWait = const Duration(seconds: 15),
+  });
   final Duration acknowledgementWait;
   final _changes = StreamController<FarmSyncStatus>.broadcast();
   int _inFlight = 0;
@@ -70,6 +73,9 @@ class WriteSynchronization {
     final acknowledgement = write.then<void>(
       (_) {
         _inFlight--;
+        if (_inFlight == 0 && _failure?.code == 'write-pending') {
+          _failure = null;
+        }
         _emit();
       },
       onError: (Object error, StackTrace stack) {
@@ -79,7 +85,19 @@ class WriteSynchronization {
         Error.throwWithStackTrace(_failure!, stack);
       },
     );
-    await acknowledgement.timeout(acknowledgementWait, onTimeout: () {});
+    await acknowledgement.timeout(
+      acknowledgementWait,
+      onTimeout: () {
+        const failure = NetworkFailure(
+          'Firestore has not confirmed this write. It may still be pending; '
+          'check your connection and wait for cloud confirmation before retrying.',
+          code: 'write-pending',
+        );
+        _failure ??= failure;
+        _emit();
+        throw failure;
+      },
+    );
   }
 
   Future<void> close() async {

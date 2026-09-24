@@ -3,7 +3,7 @@ import 'dart:convert';
 import '../../core/errors/app_failure.dart';
 import '../../domain/farm_domain.dart';
 
-/// Versioned, validated boundary shared by imports and both repository drivers.
+/// Versioned, validated boundary shared by imports and Firestore persistence.
 class FarmDataCodec {
   static const schemaVersion = 1;
   static const maxDocumentBytes = 900000;
@@ -110,9 +110,40 @@ class FarmDataCodec {
       return farm;
     } on AppFailure {
       rethrow;
+    } on DomainFailure catch (error) {
+      throw DataValidationFailure(error.message, cause: error);
     } on Object catch (error) {
       throw DataValidationFailure(
         'Farm data is invalid or incomplete. Check the imported assumptions.',
+        cause: error,
+      );
+    }
+  }
+
+  /// Existing assignments may need correction after stricter validation ships.
+  /// This read-only editing path preserves the original assignment and checks
+  /// every other input/reference. It does not make an invalid farm calculable
+  /// or savable: encodeFarm and all engines still run full strict validation.
+  static Farm decodeFarmForEditing(Map<String, dynamic> json) {
+    try {
+      final farm = Farm.fromJson(migrate(json));
+      validateId(farm.id);
+      farm
+          .copyWith(
+            fields: [
+              for (final field in farm.fields)
+                field.copyWith(currentCropId: ''),
+            ],
+          )
+          .validate();
+      return farm;
+    } on AppFailure {
+      rethrow;
+    } on DomainFailure catch (error) {
+      throw DataValidationFailure(error.message, cause: error);
+    } on Object catch (error) {
+      throw DataValidationFailure(
+        'Farm data could not be opened for editing. Check its crop references.',
         cause: error,
       );
     }
@@ -125,6 +156,8 @@ class FarmDataCodec {
       return validatePayload(farm.toJson());
     } on AppFailure {
       rethrow;
+    } on DomainFailure catch (error) {
+      throw DataValidationFailure(error.message, cause: error);
     } on Object catch (error) {
       throw DataValidationFailure(
         'Farm data could not be saved. Check the assumptions.',
@@ -147,7 +180,93 @@ class FarmDataCodec {
       data['schemaVersion'] = 1;
       data.putIfAbsent('scenarios', () => <dynamic>[]);
     }
+    _normalizeCropReferences(data);
     return data;
+  }
+
+  /// Canonical IDs win. Only an unambiguous, exact legacy display name may be
+  /// resolved; missing/ambiguous references never become inferred compatibility.
+  /// Normalization is persisted only by the next explicitly accepted farm save.
+  static void _normalizeCropReferences(Map<String, dynamic> data) {
+    final crops = data['crops'];
+    final fields = data['fields'];
+    if (crops is! List || fields is! List) return;
+    final ids = <String>{};
+    final names = <String, List<String>>{};
+    for (final crop in crops) {
+      if (crop is! Map || crop['id'] is! String || crop['name'] is! String) {
+        continue;
+      }
+      final id = crop['id'] as String;
+      validateId(id);
+      if (!ids.add(id)) {
+        throw const DataValidationFailure(
+          'Crop profiles have duplicate IDs. Correct the duplicate profiles before loading this farm.',
+        );
+      }
+      names.putIfAbsent((crop['name'] as String).trim(), () => []).add(id);
+    }
+    String resolve(Object? value, String fieldName, {bool allowEmpty = false}) {
+      if (value is! String) {
+        throw DataValidationFailure(
+          'Crop references for $fieldName must be crop IDs.',
+        );
+      }
+      if (ids.contains(value)) return value;
+      final reference = value.trim();
+      if (allowEmpty && reference.isEmpty) return '';
+      if (ids.contains(reference)) return reference;
+      final matches = names[reference] ?? const <String>[];
+      if (matches.length == 1) return matches.single;
+      throw DataValidationFailure(
+        matches.length > 1
+            ? 'Crop reference "$reference" for $fieldName matches multiple profiles. Select the intended crop by ID.'
+            : 'Crop reference "$reference" for $fieldName does not match a crop profile. Restore the profile or correct the reference.',
+      );
+    }
+
+    List<String> resolveList(Object? value, String fieldName) {
+      if (value is! List) {
+        throw DataValidationFailure(
+          'Compatible crops for $fieldName must be a list of crop IDs.',
+        );
+      }
+      return value.map((entry) => resolve(entry, fieldName)).toList();
+    }
+
+    for (final field in fields) {
+      if (field is! Map) continue;
+      final name = field['name'] is String
+          ? field['name'] as String
+          : 'this field';
+      if (field.containsKey('currentCropId')) {
+        field['currentCropId'] = resolve(
+          field['currentCropId'],
+          name,
+          allowEmpty: true,
+        );
+      }
+      final canonical = field.containsKey('compatibleCropIds')
+          ? resolveList(field['compatibleCropIds'], name)
+          : null;
+      final legacy = field.containsKey('allowedCropIds')
+          ? resolveList(field['allowedCropIds'], name)
+          : null;
+      if (canonical != null &&
+          legacy != null &&
+          (canonical.length != legacy.length ||
+              !canonical.toSet().containsAll(legacy) ||
+              !legacy.toSet().containsAll(canonical))) {
+        throw DataValidationFailure(
+          'Conflicting compatibility lists for $name. Choose the intended compatible crops before importing this farm.',
+        );
+      }
+      field['compatibleCropIds'] = canonical ?? legacy ?? <String>[];
+      field.remove('allowedCropIds');
+      if (field.containsKey('cropHistory')) {
+        field['cropHistory'] = resolveList(field['cropHistory'], name);
+      }
+    }
   }
 }
 

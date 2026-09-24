@@ -4,9 +4,9 @@
 
 The app display name is FarmTwin and version/build number comes from `pubspec.yaml`. Debug Android uses `org.farmtwin.farmtwin.dev`. Every Android release requires an explicitly supplied registered `FARMTWIN_APPLICATION_ID` Gradle property and a real upload key; the build never silently signs a release with the debug key.
 
-Copy `config/staging.example.json` or `config/production.example.json` to a local ignored JSON file. Fill the platform's Firebase public client identifiers and HTTPS passport URL. These are public client configuration, not server secrets. Staging and production reject missing Firebase configuration and demo project IDs. Emulator use is allowed only in development with a demo project. Android/iOS production App Check providers are Play Integrity and App Attest with DeviceCheck fallback; browser cloud access requires the configured reCAPTCHA site key. Actual provider registration/enforcement must be verified in Firebase.
+The generated `lib/firebase_options.dart` supplies the real `farmtwin-f64bd` project by default. Production/staging example configurations use these options. Emulator use is allowed only through explicit development configuration with a demo project. Android/iOS production App Check providers are Play Integrity and App Attest with DeviceCheck fallback. Web activates reCAPTCHA when a valid site key is configured; provider registration and valid client tokens must precede enforcement. See the verification record for observed project configuration.
 
-Use distinct Firebase projects and distinct registered mobile apps for staging and production. Configure email/password Auth, rules, indexes, server cleanup functions, and required billing/IAM. Deploying this repository is not authorized automatically by running tests. See [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
+The current staging label uses the same real project. A separate staging project requires deliberate registration and configuration validation changes. Configure email/password Auth, rules, indexes, server cleanup functions, and required billing/IAM. Deploying this repository is not authorized automatically by running tests. See [FIREBASE_ARCHITECTURE.md](FIREBASE_ARCHITECTURE.md).
 
 ## Android
 
@@ -16,7 +16,7 @@ Install Android SDK, a compatible JDK, and accept the SDK license. The local dev
 flutter build apk --debug
 ```
 
-In this Windows workspace, OneDrive converted some resource files to reparse points that Gradle could not snapshot. The verified debug build used an ordinary local copy at `C:\Users\kokek\.cache\farmtwin\android-build-20260920`, then copied the resulting APK back to the workspace. If the error says a resource is "not a regular file," build a local copy outside OneDrive rather than disabling Gradle's input tracking. The debug artifact built without environment defines offers the explicit local Sample Farm; cloud accounts require the appropriate Firebase build configuration.
+In this Windows workspace, OneDrive converted some resource files to reparse points that Gradle could not snapshot. The verified debug build used an ordinary local copy at `C:\Users\kokek\.cache\farmtwin\android-build-20260920`, then copied the resulting APK back to the workspace. If the error says a resource is "not a regular file," build a local copy outside OneDrive rather than disabling Gradle's input tracking. A new debug build without environment defines uses the generated real Firebase project. Older artifacts do not establish verification of the current connectivity fixes.
 
 Create an ignored `android/key.properties` containing `storeFile`, `storePassword`, `keyAlias`, and `keyPassword`. Keep the keystore outside Git. Use an upload key registered with Google Play App Signing. Set the Gradle property using an environment variable, then run:
 

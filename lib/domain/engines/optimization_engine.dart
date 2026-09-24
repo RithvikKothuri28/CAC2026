@@ -99,10 +99,7 @@ class OptimizationEngine {
         .map(
           (field) =>
               field.compatibleCropIds
-                  .where(
-                    (id) =>
-                        !farm.crop(id).requiresIrrigation || field.irrigated,
-                  )
+                  .where((id) => field.isCompatibleWith(farm.crop(id)))
                   .toList()
                 ..sort(),
         )

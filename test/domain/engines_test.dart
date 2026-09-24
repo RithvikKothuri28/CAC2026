@@ -271,6 +271,112 @@ void main() {
         );
       },
     );
+    test(
+      'compatible current crop uses stable IDs despite display name changes',
+      () {
+        final corn = crop('crop-corn-id').copyWith(name: 'Corn');
+        final farm = fixture(crops: [corn]);
+        expect(() => farm.validate(requireReady: true), returnsNormally);
+        expect(farm.fields.single.isCompatibleWith(corn), isTrue);
+        expect(
+          () => farm
+              .copyWith(crops: [corn.copyWith(name: 'Sweet corn')])
+              .validate(requireReady: true),
+          returnsNormally,
+        );
+        expect(
+          () => farm
+              .copyWith(
+                fields: [farm.fields.single.copyWith(currentCropId: 'Corn')],
+              )
+              .validate(),
+          throwsA(isA<ValidationFailure>()),
+        );
+      },
+    );
+    test(
+      'a current crop outside compatibility is rejected before persistence',
+      () {
+        final farm = fixture();
+        final field = farm.fields.single.copyWith(compatibleCropIds: ['b']);
+        expect(field.isCompatibleWith(farm.crop('a')), isFalse);
+        expect(() => field.validate(), throwsA(isA<ValidationFailure>()));
+        expect(
+          () => farm.copyWith(fields: [field]).validate(),
+          throwsA(isA<ValidationFailure>()),
+        );
+        expect(
+          () => farm
+              .copyWith(fields: [field.copyWith(currentCropId: 'b')])
+              .validatePlan(FarmPlan(assignments: {field.id: 'a'})),
+          throwsA(isA<ValidationFailure>()),
+        );
+      },
+    );
+    test('current and compatible crop IDs must resolve to real profiles', () {
+      final farm = fixture();
+      final unknown = farm.fields.single.copyWith(
+        currentCropId: 'missing-profile',
+        compatibleCropIds: ['missing-profile'],
+      );
+      expect(
+        () => farm.copyWith(fields: [unknown]).validate(),
+        throwsA(isA<DataUnavailableFailure>()),
+      );
+    });
+    test(
+      'irrigation requirement also applies before saving a current crop',
+      () {
+        final corn = crop(
+          'corn-id',
+        ).copyWith(name: 'Corn', requiresIrrigation: true);
+        final farm = fixture(crops: [corn]);
+        final dryField = farm.fields.single.copyWith(irrigated: false);
+        expect(dryField.isCompatibleWith(corn), isFalse);
+        expect(
+          () => farm.copyWith(fields: [dryField]).validate(),
+          throwsA(
+            isA<ValidationFailure>().having(
+              (failure) => failure.message,
+              'actionable reason',
+              contains('requires irrigation'),
+            ),
+          ),
+        );
+        expect(
+          () => farm
+              .copyWith(fields: [dryField.copyWith(irrigated: true)])
+              .validate(),
+          returnsNormally,
+        );
+      },
+    );
+    test(
+      'unassigned field with no compatible crops can persist without calculating',
+      () {
+        final farm = fixture();
+        final field = farm.fields.single.copyWith(
+          currentCropId: '',
+          compatibleCropIds: [],
+        );
+        final incomplete = farm.copyWith(fields: [field]);
+        expect(() => incomplete.validate(), returnsNormally);
+        final restored = Farm.fromJson(incomplete.toJson());
+        expect(() => restored.validate(), returnsNormally);
+        expect(restored.fields.single.currentCropId, isEmpty);
+        expect(restored.fields.single.compatibleCropIds, isEmpty);
+        expect(
+          () => const OptimizationEngine().run(restored),
+          throwsA(
+            isA<ValidationFailure>().having(
+              (failure) => failure.message,
+              'missing configuration',
+              contains('Set current crop and compatible crops'),
+            ),
+          ),
+        );
+      },
+    );
     test('future schema is a typed failure', () {
       expect(
         () => fixture().copyWith(schemaVersion: 999).validate(),
@@ -279,6 +385,64 @@ void main() {
     });
   });
   group('constraints and optimizer', () {
+    for (final exhaustive in [true, false]) {
+      test(
+        '${exhaustive ? 'exhaustive' : 'bounded'} optimizer assigns only compatible crop IDs',
+        () {
+          final crops = [
+            crop('dry-a', price: 2).copyWith(name: 'Corn'),
+            crop('dry-b', price: 3).copyWith(name: 'Corn'),
+            crop('irrigated', price: 100).copyWith(requiresIrrigation: true),
+            crop('never-selected', price: 999),
+          ];
+          final farm = fixture(
+            crops: crops,
+            exhaustiveLimit: exhaustive ? 100 : 1,
+            fields: [
+              Field(
+                id: 'dry-field',
+                name: 'Dry field',
+                acres: 10,
+                currentCropId: 'dry-a',
+                compatibleCropIds: ['dry-a', 'dry-b', 'irrigated'],
+                irrigated: false,
+                provenance: provenance,
+              ),
+              Field(
+                id: 'wet-field',
+                name: 'Irrigated field',
+                acres: 10,
+                currentCropId: 'dry-b',
+                compatibleCropIds: ['dry-b', 'irrigated'],
+                irrigated: true,
+                provenance: provenance,
+              ),
+            ],
+          );
+          final result = const OptimizationEngine().run(farm);
+          expect(result.diagnostics.searchSpace, '4');
+          expect(result.diagnostics.approximate, !exhaustive);
+          expect(result.diagnostics.candidatesGenerated, 4);
+          expect(result.recommended!.plan.assignments, {
+            'dry-field': 'dry-b',
+            'wet-field': 'irrigated',
+          });
+          for (final evaluated in [
+            result.current,
+            result.recommended!,
+            ...result.pareto,
+            ...result.representatives.values,
+          ]) {
+            for (final entry in evaluated.plan.assignments.entries) {
+              expect(
+                farm.field(entry.key).isCompatibleWith(farm.crop(entry.value)),
+                isTrue,
+              );
+            }
+          }
+        },
+      );
+    }
     test(
       'large requested budgets respect disclosed field-result and Pareto work ceilings',
       () {
@@ -919,7 +1083,7 @@ void main() {
     'sample contains only inputs; real optimization and constraint changes produce different outputs',
     () {
       final json =
-          jsonDecode(File('assets/sample/sample_farm.json').readAsStringSync())
+          jsonDecode(File('test/fixtures/farm.json').readAsStringSync())
               as Map<String, dynamic>;
       final farm = Farm.fromJson(json);
       farm.validate(requireReady: true);

@@ -20,13 +20,16 @@ class FarmCanvas extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: farm.fields.map((field) {
-              final cropId = (plan ?? farm.currentPlan).assignments[field.id]!;
-              final crop = farm.crop(cropId);
-              final color =
-                  FarmTheme.cropColors[farm.crops.indexWhere(
-                        (c) => c.id == cropId,
-                      ) %
-                      FarmTheme.cropColors.length];
+              final cropId = (plan ?? farm.currentPlan).assignments[field.id];
+              final cropIndex = farm.crops.indexWhere(
+                (crop) => crop.id == cropId,
+              );
+              final crop = cropIndex < 0 ? null : farm.crops[cropIndex];
+              final compatible = crop != null && field.isCompatibleWith(crop);
+              final color = !compatible
+                  ? FarmTheme.muted
+                  : FarmTheme.cropColors[cropIndex %
+                        FarmTheme.cropColors.length];
               final changed = cropId != field.currentCropId;
               return SizedBox(
                 width: (size.maxWidth - (columns - 1) * 10) / columns,
@@ -62,7 +65,9 @@ class FarmCanvas extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 18),
-                          Text(crop.name),
+                          Text(crop?.name ?? 'No current crop'),
+                          if (crop != null && !compatible)
+                            const Text('Review crop compatibility'),
                           Text(
                             '${number(field.acres)} acres',
                             style: Theme.of(context).textTheme.bodySmall,

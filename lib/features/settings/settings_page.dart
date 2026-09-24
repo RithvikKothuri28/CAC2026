@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../../core/widgets/components.dart';
 import '../../core/widgets/model_editor.dart';
@@ -124,22 +125,17 @@ class SettingsPage extends StatelessWidget {
                 onPressed: state.busy
                     ? null
                     : () async {
-                        final result = await editModel(
+                        await editModel(
                           context,
                           title: 'Rename farm',
                           initial: {'name': farm.name},
                           validate: (json) => farm
                               .copyWith(name: json['name'] as String)
                               .validate(),
+                          onSave: (json) => state.saveFarm(
+                            farm.copyWith(name: json['name'] as String),
+                          ),
                         );
-                        if (result != null) {
-                          await state.perform(
-                            'Renaming farm',
-                            () => state.saveFarm(
-                              farm.copyWith(name: result['name'] as String),
-                            ),
-                          );
-                        }
                       },
                 child: const Text('Rename farm'),
               ),
@@ -198,37 +194,7 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 24),
-        if (state.sampleMode)
-          SectionCard(
-            title: 'Sample Farm workspace',
-            subtitle:
-                'Sample inputs · real calculations · saved locally on this device',
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                OutlinedButton(
-                  onPressed: state.busy
-                      ? null
-                      : () async {
-                          if (await confirmAction(
-                            context,
-                            'Reset Sample Farm?',
-                            'Replace local sample edits and saved calculations with the original input dataset?',
-                          )) {
-                            await state.openSample(reset: true);
-                          }
-                        },
-                  child: const Text('Reset Sample Farm'),
-                ),
-                TextButton(
-                  onPressed: state.leaveSample,
-                  child: const Text('Leave sample workspace'),
-                ),
-              ],
-            ),
-          ),
-        if (!state.sampleMode && cloud != null && privacy != null) ...[
+        if (cloud != null && privacy != null) ...[
           SectionCard(
             title: 'Privacy preferences',
             subtitle: 'Optional data collection is off until you enable it.',
@@ -326,6 +292,19 @@ class SettingsPage extends StatelessWidget {
                   child: const Text('Delete account and data'),
                 ),
               ],
+            ),
+          ),
+        ],
+        if (kDebugMode && state.connectivityDiagnostic != null) ...[
+          const SizedBox(height: 24),
+          SectionCard(
+            title: 'Development connectivity check',
+            subtitle:
+                'Runs only when requested. Creates, reads, and deletes a temporary diagnostics record.',
+            child: OutlinedButton.icon(
+              onPressed: state.busy ? null : state.runConnectivityDiagnostic,
+              icon: const Icon(Icons.network_check),
+              label: const Text('Check Firebase connectivity'),
             ),
           ),
         ],

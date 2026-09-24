@@ -18,7 +18,7 @@ for attempt in {1..30}; do
 done
 curl --silent --fail http://127.0.0.1:4444/status >/dev/null
 
-for flow in sample production user; do
+for flow in production user; do
   flutter drive --driver=test_driver/integration_test.dart \
     --target="integration_test/${flow}_flow_test.dart" \
     -d web-server --browser-name=chrome --headless \

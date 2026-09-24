@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:farmtwin/data/data.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -118,40 +115,6 @@ void main() {
         }),
         throwsA(isA<DataValidationFailure>()),
       );
-    },
-  );
-
-  test(
-    'sample repository enforces harvest boundary and replacement removes omitted fields',
-    () async {
-      SharedPreferences.setMockInitialValues({});
-      final repository = await SampleFarmRepository.open(
-        loadAsset: (path) => File(path).readAsString(),
-      );
-      final farm = await repository.loadSample();
-      await expectLater(
-        repository.saveEntity(
-          farm.id,
-          EntityKind.harvestBatches,
-          const StoredEntity(id: 'bad', data: {'crop': ''}),
-        ),
-        throwsA(isA<DataValidationFailure>()),
-      );
-      await repository.saveEntity(
-        farm.id,
-        EntityKind.harvestBatches,
-        StoredEntity(id: 'batch', data: validBatch()),
-      );
-      await repository.saveEntity(
-        farm.id,
-        EntityKind.harvestBatches,
-        const StoredEntity(id: 'batch', data: {'crop': 'Crop'}),
-      );
-      final records = await repository
-          .watchEntities(farm.id, EntityKind.harvestBatches)
-          .first;
-      expect(records.single.data, {'crop': 'Crop'});
-      await repository.close();
     },
   );
 }

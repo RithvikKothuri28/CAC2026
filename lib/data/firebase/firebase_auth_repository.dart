@@ -30,18 +30,43 @@ class FirebaseAuthRepository {
     );
   });
 
-  Future<void> signUp(String email, String password) => firebaseGuard(() async {
-    _validateCredentials(email, password);
-    if (password.length < 8) {
-      throw const DataValidationFailure(
-        'Use at least eight characters for your password.',
-      );
-    }
-    await _auth.createUserWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
-    );
-  });
+  Future<void> signUp(String email, String password, {String? displayName}) =>
+      firebaseGuard(() async {
+        _validateCredentials(email, password);
+        final name = displayName?.trim();
+        if (name != null && (name.isEmpty || name.length > 80)) {
+          throw const DataValidationFailure(
+            'Enter a display name containing 1–80 characters.',
+          );
+        }
+        if (password.length < 8) {
+          throw const DataValidationFailure(
+            'Use at least eight characters for your password.',
+          );
+        }
+        final credential = await _auth.createUserWithEmailAndPassword(
+          email: email.trim(),
+          password: password,
+        );
+        final user = credential.user;
+        if (user == null) {
+          throw const AuthenticationFailure(
+            'Firebase did not return the created account. Try signing in.',
+          );
+        }
+        try {
+          if (name != null) await user.updateDisplayName(name);
+          await user.sendEmailVerification();
+        } on Object catch (error) {
+          final failure = firebaseFailure(error);
+          throw AuthenticationFailure(
+            'Your account was created, but account setup could not finish. '
+            'You can sign in with your email and password. ${failure.message}',
+            code: failure.code,
+            cause: error,
+          );
+        }
+      });
 
   Future<void> resetPassword(String email) => firebaseGuard(() async {
     _validateCredentials(email, 'reset');

@@ -6,6 +6,5 @@ export 'firebase/firebase_privacy_service.dart';
 export 'firebase/firestore_farm_repository.dart';
 export 'firebase/user_settings.dart';
 export 'firebase/write_synchronization.dart';
-export 'local/sample_farm_repository.dart';
 export 'repositories/data_codec.dart';
 export 'repositories/farm_repository.dart';

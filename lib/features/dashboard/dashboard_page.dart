@@ -18,9 +18,10 @@ class DashboardPage extends StatelessWidget {
     if (result == null) {
       return EmptyState(
         icon: Icons.landscape_outlined,
-        title: 'Start with your farm inputs',
+        title: 'Review your farm inputs',
         message:
-            'Add crop profiles, then fields, expenses, debt, and operating boundaries. Your dashboard will calculate from those inputs.',
+            state.setupIssue ??
+            'The current assumptions could not be calculated. Review the field, crop, and financial inputs.',
         action: FilledButton.icon(
           onPressed: () => context.go('/farm'),
           icon: const Icon(Icons.add),

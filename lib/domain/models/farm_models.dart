@@ -303,12 +303,29 @@ class Field {
     yieldMultiplier: yieldMultiplier ?? this.yieldMultiplier,
     provenance: provenance ?? this.provenance,
   );
+
+  /// Compatibility is an explicit crop ID selection plus physical requirements.
+  /// Display names are never used to resolve field assignments.
+  bool isCompatibleWith(CropProfile crop) =>
+      compatibleCropIds.contains(crop.id) &&
+      (!crop.requiresIrrigation || irrigated);
+
   void validate() {
     _text(id, 'Field id');
     _text(name, 'Field name');
     _finite(acres, 'Acreage', positive: true);
     _finite(yieldMultiplier, 'Field yield multiplier', min: 0);
     _unique(compatibleCropIds, 'compatible crop');
+    for (final cropId in compatibleCropIds) {
+      _text(cropId, 'Compatible crop id');
+    }
+    if (currentCropId.isNotEmpty &&
+        !compatibleCropIds.contains(currentCropId)) {
+      throw ValidationFailure(
+        'The current crop for $name must be selected in its compatible crops. '
+        'Choose a compatible crop or leave the current crop unassigned.',
+      );
+    }
   }
 }
 
@@ -1128,6 +1145,9 @@ class StressScenario {
 class Farm {
   final String id;
   final String name;
+  final String? country;
+  final String? region;
+  final double? declaredAcres;
   final List<Field> fields;
   final List<CropProfile> crops;
   final List<Expense> expenses;
@@ -1140,6 +1160,9 @@ class Farm {
   Farm({
     required this.id,
     required this.name,
+    this.country,
+    this.region,
+    this.declaredAcres,
     required List<Field> fields,
     required List<CropProfile> crops,
     required List<Expense> expenses,
@@ -1160,6 +1183,11 @@ class Farm {
       return Farm(
         id: _string(json, 'id'),
         name: _string(json, 'name'),
+        country: json['country'] == null ? null : _string(json, 'country'),
+        region: json['region'] == null ? null : _string(json, 'region'),
+        declaredAcres: json['declaredAcres'] == null
+            ? null
+            : _number(json, 'declaredAcres'),
         fields: _list(
           json,
           'fields',
@@ -1201,6 +1229,9 @@ class Farm {
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
+    if (country != null) 'country': country,
+    if (region != null) 'region': region,
+    if (declaredAcres != null) 'declaredAcres': declaredAcres,
     'fields': fields.map((v) => v.toJson()).toList(),
     'crops': crops.map((v) => v.toJson()).toList(),
     'expenses': expenses.map((v) => v.toJson()).toList(),
@@ -1214,6 +1245,9 @@ class Farm {
   Farm copyWith({
     String? id,
     String? name,
+    String? country,
+    String? region,
+    double? declaredAcres,
     List<Field>? fields,
     List<CropProfile>? crops,
     List<Expense>? expenses,
@@ -1226,6 +1260,9 @@ class Farm {
   }) => Farm(
     id: id ?? this.id,
     name: name ?? this.name,
+    country: country ?? this.country,
+    region: region ?? this.region,
+    declaredAcres: declaredAcres ?? this.declaredAcres,
     fields: fields ?? this.fields,
     crops: crops ?? this.crops,
     expenses: expenses ?? this.expenses,
@@ -1259,6 +1296,16 @@ class Farm {
   void validate({bool requireReady = false}) {
     _text(id, 'Farm id');
     _text(name, 'Farm name');
+    if (name.length > 120) {
+      throw const ValidationFailure(
+        'Farm name must contain at most 120 characters.',
+      );
+    }
+    if (country != null) _text(country!, 'Country');
+    if (region != null) _text(region!, 'Region');
+    if (declaredAcres != null) {
+      _finite(declaredAcres!, 'Declared farm acreage', min: 0.000001);
+    }
     if (schemaVersion != currentSchemaVersion) {
       throw ValidationFailure(
         'Unsupported farm schema version $schemaVersion. Export data and update the application.',
@@ -1296,7 +1343,13 @@ class Farm {
         crop(id);
       }
       if (f.currentCropId.isNotEmpty) {
-        crop(f.currentCropId);
+        final currentCrop = crop(f.currentCropId);
+        if (!f.isCompatibleWith(currentCrop)) {
+          throw ValidationFailure(
+            '${currentCrop.name} requires irrigation. Enable irrigation for '
+            '${f.name} or choose another compatible current crop.',
+          );
+        }
       }
       if (requireReady &&
           (f.currentCropId.isEmpty || f.compatibleCropIds.isEmpty)) {
@@ -1325,8 +1378,7 @@ class Farm {
         throw ValidationFailure('Missing assignment for ${f.name}.');
       }
       final c = crop(id);
-      if (!f.compatibleCropIds.contains(id) ||
-          (c.requiresIrrigation && !f.irrigated)) {
+      if (!f.isCompatibleWith(c)) {
         throw ValidationFailure(
           'Crop ${c.name} is incompatible with ${f.name}.',
         );

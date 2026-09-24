@@ -110,6 +110,7 @@ export async function removeAccountData(db: Firestore, auth: Auth, uid: string):
   }
   await db.recursiveDelete(db.doc(`users/${uid}`));
   await db.recursiveDelete(db.doc(`aiUsage/${uid}`));
+  await db.recursiveDelete(db.doc(`developmentDiagnostics/${uid}`));
   // Existing ID tokens can survive account deletion until expiry. Block all old-token writes.
   await db.doc(`deletedAccounts/${uid}`).set({ expiresAt: Timestamp.fromMillis(Date.now() + 86400000) });
   try { await auth.deleteUser(uid); }

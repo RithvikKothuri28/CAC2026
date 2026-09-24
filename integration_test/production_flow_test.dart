@@ -1,13 +1,11 @@
-import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart' hide Field;
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:farmtwin/app/config/app_config.dart';
+import 'package:farmtwin/core/errors/app_failure.dart';
 import 'package:farmtwin/data/firebase/firebase_bootstrap.dart';
 import 'package:farmtwin/data/firebase/firestore_farm_repository.dart';
 import 'package:farmtwin/data/firebase/user_settings.dart';
@@ -53,7 +51,12 @@ Farm _unseenFarm(String id) {
   return Farm(
     id: id,
     name: 'Unseen integration farm',
-    crops: [crop('alpha', 20, 10, 5, 2), crop('beta', 30, 8, 10, 3)],
+    crops: [
+      crop('alpha', 20, 10, 5, 2),
+      crop('beta', 30, 8, 10, 3),
+      // More profitable, but excluded by the field's explicit compatibility.
+      crop('excluded', 1000, 100, 1, 0),
+    ],
     fields: [
       Field(
         id: 'field-one',
@@ -139,7 +142,7 @@ void main() {
       ], contains(config.emulatorHost));
       final services = await FirebaseBootstrap.initialize(config);
       expect(services, isNotNull);
-      final cloud = services!;
+      final cloud = services;
       final firestore = FirebaseFirestore.instance;
       final functions = FirebaseFunctions.instanceFor(
         region: config.functionsRegion,
@@ -184,6 +187,25 @@ void main() {
         await firestore.waitForPendingWrites();
         farm = await repository.readFarm(farm.id);
         farm.validate(requireReady: true);
+        expect(farm.fields.single.currentCropId, 'alpha');
+        expect(farm.fields.single.compatibleCropIds, ['alpha', 'beta']);
+        await expectLater(
+          repository.saveFarm(
+            farm.copyWith(
+              fields: [farm.fields.single.copyWith(currentCropId: 'excluded')],
+            ),
+          ),
+          throwsA(
+            isA<DataValidationFailure>().having(
+              (failure) => failure.message,
+              'message',
+              contains('must be selected in its compatible crops'),
+            ),
+          ),
+        );
+        final accepted = await repository.readFarm(farm.id);
+        expect(accepted.fields.single.currentCropId, 'alpha');
+        expect(accepted.fields.single.compatibleCropIds, ['alpha', 'beta']);
 
         final financial = const FinancialEngine().evaluate(
           farm,
@@ -197,6 +219,16 @@ void main() {
         expect(optimization.recommended!.plan.assignments['field-one'], 'beta');
         expect(optimization.recommended!.financial.operatingIncome, 2050);
         expect(optimization.diagnostics.candidatesGenerated, 2);
+        for (final plan in [
+          optimization.current,
+          ...optimization.pareto,
+          ...optimization.representatives.values,
+        ]) {
+          expect(
+            plan.plan.assignments.values,
+            everyElement(isIn(['alpha', 'beta'])),
+          );
+        }
         final risk = const MonteCarloEngine().run(
           farm,
           optimization.recommended!.plan,
@@ -247,7 +279,10 @@ void main() {
         // Browser cache is memory-based; native caches also support disk persistence.
         await firestore.disableNetwork();
         farm = farm.copyWith(name: 'Edited offline by real repository');
-        await repository.saveFarm(farm);
+        await expectLater(
+          repository.saveFarm(farm),
+          throwsA(isA<NetworkFailure>()),
+        );
         final cached = await firestore
             .collection('farms')
             .doc(farm.id)
@@ -291,6 +326,11 @@ void main() {
             .get(const GetOptions(source: Source.server));
         expect(server.data()!['ownerId'], uid);
         expect(server.data()!['source'], 'userEntered');
+        final serverData = server.data()!['data'] as Map<String, dynamic>;
+        final serverField =
+            (serverData['fields'] as List).single as Map<String, dynamic>;
+        expect(serverField['currentCropId'], 'alpha');
+        expect(serverField['compatibleCropIds'], ['alpha', 'beta']);
 
         await repository.saveEntity(
           farm.id,
@@ -370,42 +410,5 @@ void main() {
       }
     },
     timeout: const Timeout(Duration(minutes: 5)),
-  );
-
-  testWidgets(
-    'explicit Sample Farm runs real optimizer and risk after changed constraints',
-    (tester) async {
-      final data =
-          jsonDecode(
-                await rootBundle.loadString('assets/sample/sample_farm.json'),
-              )
-              as Map<String, dynamic>;
-      final farm = Farm.fromJson(data);
-      expect(farm.provenance.source, DataSourceType.sample);
-      final initial = const OptimizationEngine().run(farm);
-      expect(initial.recommended, isNotNull);
-      final changed = farm.copyWith(
-        constraints: farm.constraints
-            .map(
-              (constraint) => constraint.kind == ConstraintKind.maxWater
-                  ? constraint.copyWith(limit: constraint.limit * .6)
-                  : constraint,
-            )
-            .toList(),
-      );
-      final next = const OptimizationEngine().run(changed);
-      expect(next.recommended, isNotNull);
-      expect(
-        next.recommended!.financial.waterUsage,
-        lessThan(initial.recommended!.financial.waterUsage),
-      );
-      final risk = const MonteCarloEngine().run(
-        changed,
-        next.recommended!.plan,
-        config: changed.settings.simulation.copyWith(iterations: 100),
-      );
-      expect(risk.samples.length, 100);
-      expect(risk.standardDeviation, greaterThan(0));
-    },
   );
 }

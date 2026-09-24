@@ -32,23 +32,21 @@ MultiYearComparison projectFarm((Farm, FarmPlan) input) =>
 
 class WorkspaceController extends ChangeNotifier {
   WorkspaceController({
-    required this.sampleRepository,
     required this.cloud,
     this.startupError,
+    this.connectivityDiagnostic,
   }) {
     if (cloud != null) {
       _authSubscription = cloud!.auth.authStateChanges.listen(
         (user) {
           if (_disposed) return;
           _restorePrivacy(user?.uid);
-          if (!sampleMode) {
-            _listen(user == null ? null : cloud!.farms);
-          }
+          _listen(user == null ? null : cloud!.farms);
           notifyListeners();
         },
         onError: (Object failure) {
           if (_disposed) return;
-          if (!sampleMode) _listen(null);
+          _listen(null);
           cloud!.privacy
               .bindAccount(null, () async => const UserSettings())
               .catchError((Object _) {});
@@ -58,15 +56,15 @@ class WorkspaceController extends ChangeNotifier {
       );
     }
   }
-  SampleFarmRepository? sampleRepository;
   final FirebaseServices? cloud;
   final String? startupError;
+  final Future<String> Function()? connectivityDiagnostic;
   StreamSubscription<dynamic>? _authSubscription;
   StreamSubscription<List<Farm>>? _farmsSubscription;
-  FarmRepository? repository;
+  FirestoreFarmRepository? _repository;
+  FirestoreFarmRepository? get repository => _repository;
   List<Farm> farms = [];
   Farm? farm;
-  bool sampleMode = false;
   bool busy = false;
   String? busyLabel;
   String? error;
@@ -97,22 +95,43 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   bool get signedIn => cloud?.auth.currentUser != null;
-  bool get ready =>
-      farm != null && farm!.fields.isNotEmpty && farm!.crops.isNotEmpty;
-  FarmFinancialResult? get financial =>
-      ready ? FinancialEngine().evaluate(farm!, farm!.currentPlan) : null;
-  ConstraintReport? get constraints => ready
-      ? ConstraintEngine().evaluate(farm!, farm!.currentPlan, financial!)
-      : null;
+  String? get setupIssue {
+    final value = farm;
+    if (value == null) return 'Select or create a farm first.';
+    try {
+      value.validate(requireReady: true);
+      value.validatePlan(value.currentPlan);
+      return null;
+    } on DomainFailure catch (failure) {
+      return '${failure.message} Review the field and crop settings in My farm.';
+    }
+  }
 
-  void _listen(FarmRepository? next) {
+  bool get ready => farm != null && setupIssue == null;
+  FarmFinancialResult? get financial {
+    if (!ready) return null;
+    try {
+      return FinancialEngine().evaluate(farm!, farm!.currentPlan);
+    } on DomainFailure {
+      return null;
+    }
+  }
+
+  ConstraintReport? get constraints {
+    final result = financial;
+    return result == null
+        ? null
+        : ConstraintEngine().evaluate(farm!, farm!.currentPlan, result);
+  }
+
+  void _listen(FirestoreFarmRepository? next) {
     _workspaceEpoch++;
     final subscriptionEpoch = ++_subscriptionEpoch;
     _farmsSubscription?.cancel();
     // Permission errors from the former account (including deletion freezing
     // its live query) do not belong to the newly selected workspace.
     error = null;
-    repository = next;
+    _repository = next;
     farms = [];
     farm = null;
     _invalidate();
@@ -141,26 +160,6 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> openSample({bool reset = false}) async {
-    await perform('Loading Sample Farm', () async {
-      final sample = sampleRepository ??= await SampleFarmRepository.open();
-      sampleMode = true;
-      _listen(sample);
-      final stored = await sample.watchFarms().first;
-      final loaded = reset || stored.isEmpty
-          ? await sample.loadSample()
-          : stored.first;
-      farms = await sample.watchFarms().first;
-      farm = loaded;
-      _invalidate();
-    });
-  }
-
-  void leaveSample() {
-    sampleMode = false;
-    _listen(signedIn ? cloud!.farms : null);
-  }
-
   void selectFarm(Farm value) {
     _workspaceEpoch++;
     farm = value;
@@ -181,18 +180,37 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   Future<void> saveFarm(Farm value) async {
+    final uid = cloud?.auth.currentUser?.uid;
+    if (uid == null) {
+      throw const AuthenticationFailure('Sign in before saving a farm.');
+    }
+    final repo = cloud!.farms;
     value.validate();
-    final repo = repository;
     final epoch = _workspaceEpoch;
-    if (repo == null) throw StateError('Sign in before saving a farm.');
     await repo.saveFarm(value);
+    if (cloud!.auth.currentUser?.uid != uid) {
+      throw const AuthenticationFailure(
+        'Your signed-in account changed. Sign in again to view the saved farm.',
+      );
+    }
     if (_disposed || epoch != _workspaceEpoch || repository != repo) return;
+    farms = [...farms.where((existing) => existing.id != value.id), value];
     farm = value;
     _invalidate();
     notifyListeners();
   }
 
-  Future<void> createFarm(String name) async {
+  Future<void> createFarm({
+    String? id,
+    required String name,
+    required String country,
+    required String region,
+    required String currencyCode,
+    required double declaredAcres,
+  }) async {
+    if (!signedIn) {
+      throw const AuthenticationFailure('Sign in before creating a farm.');
+    }
     final settings = FarmSettings.fromJson(
       jsonDecode(
             await rootBundle.loadString('assets/config/default_settings.json'),
@@ -200,14 +218,19 @@ class WorkspaceController extends ChangeNotifier {
           as Map<String, dynamic>,
     );
     final value = Farm(
-      id: const Uuid().v4(),
+      id: id ?? const Uuid().v4(),
       name: name.trim(),
+      country: country.trim(),
+      region: region.trim(),
+      declaredAcres: declaredAcres,
       fields: [],
       crops: [],
       expenses: [],
       debts: [],
       constraints: [],
-      settings: settings,
+      settings: settings.copyWith(
+        currencyCode: currencyCode.trim().toUpperCase(),
+      ),
       provenance: Provenance(
         source: DataSourceType.userEntered,
         updatedAt: DateTime.now().toUtc(),
@@ -215,6 +238,19 @@ class WorkspaceController extends ChangeNotifier {
     );
     await saveFarm(value);
   }
+
+  Future<void> runConnectivityDiagnostic() => perform(
+    'Checking Firebase connectivity',
+    () async {
+      final diagnostic = connectivityDiagnostic;
+      if (!kDebugMode || diagnostic == null) {
+        throw const ConfigurationFailure(
+          'Connectivity diagnostics are available only in development builds.',
+        );
+      }
+      notice = await diagnostic();
+    },
+  );
 
   Future<void> optimize() async => perform('Evaluating farm plans', () async {
     final snapshot = farm!;
@@ -363,7 +399,6 @@ class WorkspaceController extends ChangeNotifier {
     _revision++;
     _authSubscription?.cancel();
     _farmsSubscription?.cancel();
-    sampleRepository?.close();
     super.dispose();
   }
 }

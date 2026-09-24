@@ -41,8 +41,7 @@ class _AssistantPageState extends State<AssistantPage> {
       );
       final cloud = state.cloud;
       response = local;
-      if (!state.sampleMode &&
-          cloud != null &&
+      if (cloud != null &&
           cloud.features.cloudAssistantEnabled &&
           cloud.privacy.current.cloudAssistantConsent) {
         final f = FinancialEngine().evaluate(snapshot, snapshot.currentPlan);

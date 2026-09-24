@@ -70,7 +70,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '923406327267',
     projectId: 'farmtwin-f64bd',
     storageBucket: 'farmtwin-f64bd.firebasestorage.app',
-    iosClientId: '923406327267-g3462vdv2geq2jc2qialo1b5njjqefu4.apps.googleusercontent.com',
+    iosClientId:
+        '923406327267-g3462vdv2geq2jc2qialo1b5njjqefu4.apps.googleusercontent.com',
     iosBundleId: 'org.farmtwin.farmtwin',
   );
 }

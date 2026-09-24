@@ -39,20 +39,22 @@ AppFailure firebaseFailure(Object error) {
         code: error.code,
         cause: error,
       ),
-      'requires-recent-login' || 'failed-precondition' => AuthenticationFailure(
+      'requires-recent-login' => AuthenticationFailure(
         'Sign in again before completing this sensitive action.',
         code: error.code,
         cause: error,
       ),
       'permission-denied' => PermissionFailure(
-        'You do not have permission to change or view this record.',
+        'Firestore permission-denied: your account is not allowed to change '
+        'or view this record.',
         code: error.code,
         cause: error,
       ),
       'unavailable' ||
       'network-request-failed' ||
       'deadline-exceeded' => NetworkFailure(
-        'Cloud data is unavailable. Cached farm data remains usable; reconnect to synchronize.',
+        'Cloud data is unavailable (${error.code}). This operation has not '
+        'been confirmed by Firestore. Check your connection and retry.',
         code: error.code,
         cause: error,
       ),
@@ -71,6 +73,12 @@ AppFailure firebaseFailure(Object error) {
         code: error.code,
         cause: error,
       ),
+      'failed-precondition' => StorageFailure(
+        'Firestore failed-precondition: the cloud service cannot complete '
+        'this operation with its current configuration.',
+        code: error.code,
+        cause: error,
+      ),
       _ => StorageFailure(
         'The cloud operation could not be completed. Please retry.',
         code: error.code,
@@ -79,7 +87,7 @@ AppFailure firebaseFailure(Object error) {
     };
   }
   return StorageFailure(
-    'The operation could not be completed. Your farm has not been replaced with sample data.',
+    'The cloud operation could not be completed. The save has not been confirmed.',
     cause: error,
   );
 }

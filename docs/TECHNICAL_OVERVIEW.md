@@ -26,7 +26,7 @@ Cash samples produce actual mean, interpolated quantiles, population standard de
 
 ## Scenarios and five-year modeling
 
-Scenarios transform input profiles, expense/debt assumptions, and water limits without mutating the base farm. Presets exist only as editable sample input data. Neutral multipliers are one and additions zero.
+Scenarios transform input profiles, expense/debt assumptions, and water limits without mutating the base farm. Scenarios use farmer-entered assumptions. Neutral multipliers are one and additions zero.
 
 The multi-year engine advances crop history, price growth, variable/fixed expense inflation, and debt amortization. Rotation replacements are selected by a deterministic greedy rule. Every year's hard constraints are rechecked. Warnings disclose failed years and no global multi-year optimum is claimed. A short-term profit trap is reported only when the selected plan has positive Year 1 cash difference and negative cumulative cash difference under this model.
 
@@ -38,4 +38,4 @@ Important model entities carry input source and timestamps, with optional provid
 
 ## Persistence
 
-The farm is an atomically written aggregate in `farms/{id}.data`, keeping constraints and references coherent. Scenarios may be part of the aggregate; saved runs and harvest batches are separate versioned entities. Native Firestore persistence provides cached data and queued writes; the UI reports cache/pending/failure metadata. Browser persistence is memory-only for cloud records in this build. The local Sample Farm is persisted through SharedPreferences and clearly labeled. See [DATA_MODEL.md](DATA_MODEL.md).
+The farm is an atomically written aggregate in `farms/{id}.data`, keeping constraints and references coherent. Scenarios may be part of the aggregate; saved runs and harvest batches are separate versioned entities. Native Firestore persistence provides cached data and queued writes; the UI reports cache/pending/failure metadata. Browser persistence is memory-only for cloud records in this build. SharedPreferences stores privacy preferences; it is never a fallback for farm persistence. See [DATA_MODEL.md](DATA_MODEL.md).

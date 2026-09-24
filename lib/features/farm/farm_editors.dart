@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../../domain/farm_domain.dart';
 import '../../core/widgets/model_editor.dart';
 import '../workspace/workspace_controller.dart';
+import 'field_editor.dart';
 
 Provenance entered() => Provenance(
   source: DataSourceType.userEntered,
@@ -49,20 +50,15 @@ Future<void> editCrop(
     );
   }
 
-  final result = await editModel(
+  await editModel(
     context,
     title: crop == null ? 'Add crop profile' : 'Edit ${crop.name}',
     initial: data,
     help:
         'Enter your crop assumptions. Costs are per acre in ${farm.settings.currencyCode}. Zero means no modeled cost or uncertainty; it is not a market estimate.',
     validate: (json) => updated(json).validate(),
+    onSave: (json) => state.saveFarm(updated(json)),
   );
-  if (result != null) {
-    await state.perform(
-      'Saving crop profile',
-      () => state.saveFarm(updated(result)),
-    );
-  }
 }
 
 Future<void> editField(
@@ -71,50 +67,19 @@ Future<void> editField(
   Field? field,
 ]) async {
   final farm = state.farm!;
-  if (farm.crops.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Add a crop profile before adding fields.')),
-    );
-    return;
-  }
-  final cropChoices = {for (final crop in farm.crops) crop.id: crop.name};
-  final data =
-      field?.toJson() ??
-      {
-        'id': newId(),
-        'name': '',
-        'acres': 0.0,
-        'currentCropId': farm.crops.first.id,
-        'compatibleCropIds': farm.crops.map((c) => c.id).toList(),
-        'cropHistory': <String>[],
-        'irrigated': false,
-        'soilType': '',
-        'yieldMultiplier': 1.0,
-        'provenance': entered().toJson(),
-      };
-  Farm updated(Map<String, dynamic> json) {
-    final entity = Field.fromJson(json);
-    return farm.copyWith(
-      fields: [...farm.fields.where((v) => v.id != entity.id), entity],
-    );
-  }
-
-  final result = await editModel(
+  await showFieldEditor(
     context,
-    title: field == null ? 'Add field' : 'Edit ${field.name}',
-    initial: data,
-    choices: {
-      'currentCropId': cropChoices,
-      'compatibleCropIds': cropChoices,
-      'cropHistory': cropChoices,
-    },
-    help:
-        'Select the crops that can grow here. Yield multiplier is relative to each crop profile. History starts with last year.',
-    validate: (json) => updated(json).validate(),
+    farm: farm,
+    field: field,
+    onSave: (entity) => state.saveFarm(
+      farm.copyWith(
+        fields: [
+          ...farm.fields.where((value) => value.id != entity.id),
+          entity,
+        ],
+      ),
+    ),
   );
-  if (result != null) {
-    await state.perform('Saving field', () => state.saveFarm(updated(result)));
-  }
 }
 
 Future<void> editExpense(
@@ -123,7 +88,7 @@ Future<void> editExpense(
   Expense? expense,
 ]) async {
   final farm = state.farm!;
-  final result = await editModel(
+  await editModel(
     context,
     title: expense == null ? 'Add fixed expense' : 'Edit expense',
     initial:
@@ -144,20 +109,15 @@ Future<void> editExpense(
           ],
         )
         .validate(),
-  );
-  if (result != null) {
-    await state.perform(
-      'Saving expense',
-      () => state.saveFarm(
-        farm.copyWith(
-          expenses: [
-            ...farm.expenses.where((e) => e.id != result['id']),
-            Expense.fromJson(result),
-          ],
-        ),
+    onSave: (json) => state.saveFarm(
+      farm.copyWith(
+        expenses: [
+          ...farm.expenses.where((e) => e.id != json['id']),
+          Expense.fromJson(json),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 Future<void> editDebt(
@@ -166,7 +126,7 @@ Future<void> editDebt(
   Debt? debt,
 ]) async {
   final farm = state.farm!;
-  final result = await editModel(
+  await editModel(
     context,
     title: debt == null ? 'Add debt' : 'Edit debt',
     initial:
@@ -189,20 +149,15 @@ Future<void> editDebt(
           ],
         )
         .validate(),
-  );
-  if (result != null) {
-    await state.perform(
-      'Saving debt',
-      () => state.saveFarm(
-        farm.copyWith(
-          debts: [
-            ...farm.debts.where((e) => e.id != result['id']),
-            Debt.fromJson(result),
-          ],
-        ),
+    onSave: (json) => state.saveFarm(
+      farm.copyWith(
+        debts: [
+          ...farm.debts.where((e) => e.id != json['id']),
+          Debt.fromJson(json),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 Future<void> editConstraint(
@@ -211,7 +166,7 @@ Future<void> editConstraint(
   FarmConstraint? constraint,
 ]) async {
   final farm = state.farm!;
-  final result = await editModel(
+  await editModel(
     context,
     title: constraint == null ? 'Add operating constraint' : 'Edit constraint',
     initial:
@@ -244,20 +199,15 @@ Future<void> editConstraint(
           ],
         )
         .validate(),
-  );
-  if (result != null) {
-    await state.perform(
-      'Saving constraint',
-      () => state.saveFarm(
-        farm.copyWith(
-          constraints: [
-            ...farm.constraints.where((e) => e.id != result['id']),
-            FarmConstraint.fromJson(result),
-          ],
-        ),
+    onSave: (json) => state.saveFarm(
+      farm.copyWith(
+        constraints: [
+          ...farm.constraints.where((e) => e.id != json['id']),
+          FarmConstraint.fromJson(json),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 Future<void> editFarmSettings(
@@ -265,7 +215,7 @@ Future<void> editFarmSettings(
   WorkspaceController state,
 ) async {
   final farm = state.farm!;
-  final result = await editModel(
+  await editModel(
     context,
     title: 'Model assumptions & limits',
     initial: farm.settings.toJson(),
@@ -273,15 +223,9 @@ Future<void> editFarmSettings(
         'All values are editable inputs. Objective weights are fractions totaling 1. Uncertainty assumptions drive simulations; they are not externally verified.',
     validate: (json) =>
         farm.copyWith(settings: FarmSettings.fromJson(json)).validate(),
+    onSave: (json) =>
+        state.saveFarm(farm.copyWith(settings: FarmSettings.fromJson(json))),
   );
-  if (result != null) {
-    await state.perform(
-      'Saving assumptions',
-      () => state.saveFarm(
-        farm.copyWith(settings: FarmSettings.fromJson(result)),
-      ),
-    );
-  }
 }
 
 Future<StressScenario?> editScenario(
@@ -311,18 +255,17 @@ Future<StressScenario?> editScenario(
     validate: (json) {
       ScenarioEngine().apply(state.farm!, StressScenario.fromJson(json));
     },
+    onSave: (json) {
+      final value = StressScenario.fromJson(json);
+      return state.saveFarm(
+        state.farm!.copyWith(
+          scenarios: [
+            ...state.farm!.scenarios.where((s) => s.id != value.id),
+            value,
+          ],
+        ),
+      );
+    },
   );
-  if (result == null) return null;
-  final value = StressScenario.fromJson(result);
-  await state.perform('Saving scenario', () async {
-    await state.saveFarm(
-      state.farm!.copyWith(
-        scenarios: [
-          ...state.farm!.scenarios.where((s) => s.id != value.id),
-          value,
-        ],
-      ),
-    );
-  });
-  return value;
+  return result == null ? null : StressScenario.fromJson(result);
 }

@@ -80,7 +80,7 @@ class FarmPage extends StatelessWidget {
             ...farm.fields.map(
               (field) => row(
                 field.name,
-                '${number(field.acres)} acres · ${farm.crop(field.currentCropId).name} · ${field.irrigated ? 'Irrigated' : 'Rainfed'} · ${humanSource(field.provenance.source)}',
+                '${number(field.acres)} acres · ${farm.crops.where((crop) => crop.id == field.currentCropId).firstOrNull?.name ?? 'No current crop'} · ${field.irrigated ? 'Irrigated' : 'Rainfed'} · ${humanSource(field.provenance.source)}',
                 () => editField(context, state, field),
                 () => remove(
                   context,

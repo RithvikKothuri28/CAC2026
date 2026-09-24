@@ -17,7 +17,8 @@ class OptimizationPage extends StatelessWidget {
         icon: Icons.auto_graph,
         title: 'Define your farm first',
         message:
-            'Add fields and crop options to generate feasible operating plans.',
+            state.setupIssue ??
+            'Add fields and compatible crop options to generate feasible operating plans.',
         action: FilledButton(
           onPressed: () => context.go('/farm'),
           child: const Text('Set up farm'),

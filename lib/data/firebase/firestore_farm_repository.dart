@@ -6,6 +6,7 @@ import '../../core/errors/app_failure.dart';
 import '../../domain/farm_domain.dart';
 import '../repositories/data_codec.dart';
 import '../repositories/farm_repository.dart';
+import 'firebase_development_logger.dart';
 import 'firebase_failure.dart';
 import 'write_synchronization.dart';
 
@@ -17,12 +18,16 @@ class FirestoreFarmRepository implements FarmRepository {
     this._auth,
     this._functions, {
     WriteSynchronization? synchronization,
-  }) : _synchronization = synchronization ?? WriteSynchronization();
+    bool developmentLogging = false,
+  }) : _synchronization = synchronization ?? WriteSynchronization(),
+       _logger = FirebaseDevelopmentLogger(enabled: developmentLogging);
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final FirebaseFunctions _functions;
   final Map<String, Map<String, dynamic>> _knownEnvelopes = {};
+  final Map<String, Farm> _confirmedFarms = {};
   final WriteSynchronization _synchronization;
+  final FirebaseDevelopmentLogger _logger;
   Stream<FarmSyncStatus> get syncStatus => _synchronization.status;
   FarmSyncStatus get currentSyncStatus => _synchronization.current;
 
@@ -49,7 +54,11 @@ class FirestoreFarmRepository implements FarmRepository {
     }
   }
 
-  Farm _decode(DocumentSnapshot<Map<String, dynamic>> document, String uid) {
+  Farm _decode(
+    DocumentSnapshot<Map<String, dynamic>> document,
+    String uid, {
+    bool forEditing = false,
+  }) {
     _requireAccount(uid);
     final envelope = document.data();
     if (envelope == null) {
@@ -69,11 +78,12 @@ class FirestoreFarmRepository implements FarmRepository {
     if (data is! Map) {
       throw const DataValidationFailure('The farm record is incomplete.');
     }
-    final farm = FarmDataCodec.decodeFarm({
-      ...Map<String, dynamic>.from(data),
-      'id': document.id,
-    });
+    final values = {...Map<String, dynamic>.from(data), 'id': document.id};
+    final farm = forEditing
+        ? FarmDataCodec.decodeFarmForEditing(values)
+        : FarmDataCodec.decodeFarm(values);
     _knownEnvelopes[document.id] = envelope;
+    _confirmedFarms[document.id] = farm;
     return farm;
   }
 
@@ -90,9 +100,27 @@ class FirestoreFarmRepository implements FarmRepository {
               hasPendingWrites: snapshot.metadata.hasPendingWrites,
               isFromCache: snapshot.metadata.isFromCache,
             );
-            return snapshot.docs
-                .map((document) => _decode(document, uid))
-                .toList(growable: false);
+            final visible = <Farm>[];
+            for (final document in snapshot.docs) {
+              _requireOwner(document.data(), uid);
+              if (document.metadata.hasPendingWrites) {
+                // Firestore emits optimistic local snapshots before acceptance.
+                // Keep the last confirmed version of edits and withhold new
+                // farms entirely until the server acknowledges the write.
+                final confirmed = _confirmedFarms[document.id];
+                if (confirmed != null) visible.add(confirmed);
+              } else {
+                // Preserve legacy assignments for explicit correction in My farm.
+                // Workspace readiness and all saves/calculations remain strict.
+                visible.add(_decode(document, uid, forEditing: true));
+              }
+            }
+            final present = snapshot.docs
+                .map((document) => document.id)
+                .toSet();
+            _confirmedFarms.removeWhere((id, _) => !present.contains(id));
+            _knownEnvelopes.removeWhere((id, _) => !present.contains(id));
+            return visible;
           })
           .handleError((Object error) => throw firebaseFailure(error));
     } on Object catch (error) {
@@ -104,23 +132,50 @@ class FirestoreFarmRepository implements FarmRepository {
   Future<Farm> readFarm(String id) => firebaseGuard(() async {
     final uid = _uid;
     FarmDataCodec.validateId(id);
-    return _decode(await _farms.doc(id).get(), uid);
+    final snapshot = await _farms
+        .doc(id)
+        .get(const GetOptions(source: Source.server));
+    _requireConfirmed(snapshot);
+    return _decode(snapshot, uid);
   });
 
   @override
   Future<void> saveFarm(Farm farm) => firebaseGuard(() async {
+    FarmDataCodec.validateId(farm.id);
+    final uid = _auth.currentUser?.uid;
+    final path = 'farms/${farm.id}';
+    _log('save requested', uid: uid, path: path);
+    try {
+      await _saveFarm(farm);
+    } on Object catch (error) {
+      // Include authentication, validation, and server-read failures that occur
+      // before a write can be submitted, as well as rejected writes.
+      _log('save failure', uid: uid, path: path, error: error);
+      rethrow;
+    }
+  });
+
+  Future<void> _saveFarm(Farm farm) async {
+    final uid = _uid;
     final data = FarmDataCodec.encodeFarm(farm);
     final reference = _farms.doc(farm.id);
-    final uid = _uid;
-    // Already-loaded farm edits do not require a round trip before queueing.
+    // Only previously confirmed envelopes can skip a fresh server read. Cache
+    // misses are not evidence that a record does not exist on the server.
     var existing = _knownEnvelopes[farm.id];
-    existing ??= await _cachedData(reference);
+    if (existing == null) {
+      final snapshot = await reference.get(
+        const GetOptions(source: Source.server),
+      );
+      _requireConfirmed(snapshot);
+      existing = snapshot.data();
+    }
     _requireAccount(uid);
     if (existing != null) {
       _requireOwner(existing, uid);
-      _knownEnvelopes[farm.id] = existing;
-      await _synchronization.track(
-        reference.update({
+      await _write(
+        uid,
+        reference.path,
+        () => reference.update({
           'name': farm.name,
           'schemaVersion': 1,
           'data': data,
@@ -129,7 +184,8 @@ class FirestoreFarmRepository implements FarmRepository {
         }),
       );
     } else {
-      final write = reference.set({
+      final batch = _firestore.batch();
+      batch.set(reference, {
         'ownerId': uid,
         'name': farm.name,
         'schemaVersion': 1,
@@ -138,10 +194,60 @@ class FirestoreFarmRepository implements FarmRepository {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      _knownEnvelopes[farm.id] = {'ownerId': uid};
-      await _synchronization.track(write);
+      batch.set(reference.collection('members').doc(uid), {
+        'userId': uid,
+        'role': 'owner',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await _write(uid, reference.path, batch.commit);
     }
-  });
+    _requireAccount(uid);
+    // No optimistic cache mutation is allowed before the SDK future resolves.
+    _knownEnvelopes[farm.id] = {'ownerId': uid};
+    _confirmedFarms[farm.id] = farm;
+  }
+
+  void _log(String event, {String? uid, required String path, Object? error}) =>
+      _logger.event(
+        event,
+        uid: uid,
+        projectId: _logger.enabled ? _firestore.app.options.projectId : null,
+        path: path,
+        error: error,
+      );
+
+  void _requireConfirmed(DocumentSnapshot<Map<String, dynamic>> document) {
+    if (document.metadata.hasPendingWrites) {
+      throw const NetworkFailure(
+        'This farm still has a write awaiting Firestore confirmation. '
+        'Reconnect and wait before retrying.',
+        code: 'write-pending',
+      );
+    }
+  }
+
+  Future<void> _write(
+    String uid,
+    String path,
+    Future<void> Function() operation,
+  ) async {
+    void log(String event, {Object? error}) =>
+        _log(event, uid: uid, path: path, error: error);
+    log('write start');
+    final write = Future<void>.sync(operation).then<void>(
+      (_) => log('write success (server accepted)'),
+      onError: (Object error, StackTrace stack) {
+        log('write failure', error: error);
+        Error.throwWithStackTrace(error, stack);
+      },
+    );
+    try {
+      await _synchronization.track(write);
+    } on NetworkFailure catch (error) {
+      if (error.code == 'write-pending') log('write pending', error: error);
+      rethrow;
+    }
+  }
 
   Future<Map<String, dynamic>?> _cachedData(
     DocumentReference<Map<String, dynamic>> reference,
@@ -164,6 +270,7 @@ class FirestoreFarmRepository implements FarmRepository {
     _requireAccount(uid);
     await _functions.httpsCallable('deleteFarm').call<void>({'farmId': id});
     _knownEnvelopes.remove(id);
+    _confirmedFarms.remove(id);
   });
 
   CollectionReference<Map<String, dynamic>> _entities(
@@ -269,6 +376,7 @@ class FirestoreFarmRepository implements FarmRepository {
   @override
   Future<void> close() async {
     _knownEnvelopes.clear();
+    _confirmedFarms.clear();
     await _synchronization.close();
   }
 }

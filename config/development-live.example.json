@@ -1,7 +1,7 @@
 {
-  "ENVIRONMENT": "staging",
+  "ENVIRONMENT": "development",
   "USE_FIREBASE_EMULATORS": false,
-  "ENABLE_FIREBASE_DIAGNOSTIC": false,
+  "ENABLE_FIREBASE_DIAGNOSTIC": true,
   "APP_CHECK_WEB_SITE_KEY": "",
   "PUBLIC_PASSPORT_BASE_URL": ""
 }

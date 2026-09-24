@@ -1,7 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../core/errors/app_failure.dart';
+import '../../firebase_options.dart';
 
 enum AppEnvironment { development, staging, production }
 
@@ -18,6 +18,8 @@ class AppConfig {
     this.functionsRegion = 'us-central1',
     this.webAppCheckSiteKey = '',
     this.publicPassportBaseUrl = '',
+    this.enableConnectivityDiagnostic = false,
+    this.usesGeneratedFirebaseOptions = false,
   });
 
   final AppEnvironment environment;
@@ -30,13 +32,15 @@ class AppConfig {
   final String functionsRegion;
   final String webAppCheckSiteKey;
   final String publicPassportBaseUrl;
+  final bool enableConnectivityDiagnostic;
+  final bool usesGeneratedFirebaseOptions;
   bool get isDevelopment => environment == AppEnvironment.development;
   bool get firebaseConfigured => firebaseOptions != null;
 
   factory AppConfig.fromEnvironment() {
     const environmentName = String.fromEnvironment(
       'ENVIRONMENT',
-      defaultValue: 'development',
+      defaultValue: 'production',
     );
     final environment = AppEnvironment.values
         .where((item) => item.name == environmentName)
@@ -64,7 +68,7 @@ class AppConfig {
     final config = AppConfig(
       environment: environment,
       firebaseOptions: supplied == 0
-          ? null
+          ? DefaultFirebaseOptions.currentPlatform
           : const FirebaseOptions(
               projectId: projectId,
               apiKey: apiKey,
@@ -75,6 +79,10 @@ class AppConfig {
               iosBundleId: String.fromEnvironment('FIREBASE_IOS_BUNDLE_ID'),
               measurementId: String.fromEnvironment('FIREBASE_MEASUREMENT_ID'),
             ),
+      usesGeneratedFirebaseOptions: supplied == 0,
+      enableConnectivityDiagnostic: const bool.fromEnvironment(
+        'ENABLE_FIREBASE_DIAGNOSTIC',
+      ),
       useEmulators: const bool.fromEnvironment('USE_FIREBASE_EMULATORS'),
       emulatorHost: const String.fromEnvironment(
         'FIREBASE_EMULATOR_HOST',
@@ -115,9 +123,9 @@ class AppConfig {
         'Emulators require development and a demo- Firebase project ID.',
       );
     }
-    if (!isDevelopment && firebaseOptions == null) {
+    if (firebaseOptions == null) {
       throw const ConfigurationFailure(
-        'Staging and production require explicit Firebase configuration.',
+        'Firebase configuration is required to start FarmTwin.',
       );
     }
     if (!isDevelopment &&
@@ -126,12 +134,14 @@ class AppConfig {
         'A demo Firebase project cannot be used in staging or production.',
       );
     }
-    if (kIsWeb &&
-        firebaseConfigured &&
-        !useEmulators &&
-        webAppCheckSiteKey.isEmpty) {
+    if (!useEmulators && firebaseOptions?.projectId != 'farmtwin-f64bd') {
       throw const ConfigurationFailure(
-        'Web cloud access requires an App Check reCAPTCHA site key.',
+        'FarmTwin cloud builds must use project farmtwin-f64bd.',
+      );
+    }
+    if (enableConnectivityDiagnostic && !isDevelopment) {
+      throw const ConfigurationFailure(
+        'The Firebase diagnostic requires an explicit development environment.',
       );
     }
     if (publicPassportBaseUrl.isNotEmpty) {

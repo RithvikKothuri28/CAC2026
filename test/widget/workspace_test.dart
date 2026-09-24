@@ -1,52 +1,46 @@
-import 'dart:io';
+import 'dart:async';
 import 'package:farmtwin/app/farmtwin_app.dart';
 import 'package:farmtwin/core/widgets/model_editor.dart';
 import 'package:farmtwin/data/data.dart';
 import 'package:farmtwin/features/workspace/workspace_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../support/firebase_workspace.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets(
-    'launch is empty, sample is explicit, and all workspace pages render',
-    (tester) async {
-      tester.view.physicalSize = const Size(1440, 1100);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final repo = await SampleFarmRepository.open(
-        loadAsset: (path) async => File(path).readAsStringSync(),
-      );
-      final state = WorkspaceController(sampleRepository: repo, cloud: null);
-      addTearDown(state.dispose);
-      await tester.pumpWidget(FarmTwinApp(workspace: state));
+  testWidgets('signed-in Firestore workspace renders all workspace pages', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final cloud = TestCloud(farms: TestFarms([fixtureFarm()]));
+    addTearDown(cloud.close);
+    final state = WorkspaceController(cloud: cloud);
+    addTearDown(state.dispose);
+    await tester.pumpWidget(FarmTwinApp(workspace: state));
+    await tester.pumpAndSettle();
+    expect(find.text('Your farm, connected.'), findsOneWidget);
+    expect(state.farm, isNotNull);
+    expect(find.text('Load Sample Farm'), findsNothing);
+    for (final title in [
+      'My farm',
+      'Optimize',
+      'Risk & outlook',
+      'Scenario lab',
+      'Assistant',
+      'Harvest passports',
+      'Settings',
+      'Overview',
+    ]) {
+      await tester.tap(find.widgetWithText(ListTile, title));
       await tester.pumpAndSettle();
-      expect(find.text('Load Sample Farm'), findsOneWidget);
-      expect(state.farm, isNull);
-      await tester.tap(find.text('Load Sample Farm'));
-      await tester.pumpAndSettle();
-      expect(find.text('Your farm, connected.'), findsOneWidget);
-      expect(state.farm!.provenance.source.name, 'sample');
-      for (final title in [
-        'My farm',
-        'Optimize',
-        'Risk & outlook',
-        'Scenario lab',
-        'Assistant',
-        'Harvest passports',
-        'Settings',
-        'Overview',
-      ]) {
-        await tester.tap(find.widgetWithText(ListTile, title));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull, reason: title);
-      }
-    },
-  );
+      expect(tester.takeException(), isNull, reason: title);
+    }
+  });
 
   testWidgets(
     'small mobile viewport renders dashboard and navigation without overflow',
@@ -55,12 +49,10 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final repo = await SampleFarmRepository.open(
-        loadAsset: (path) async => File(path).readAsStringSync(),
-      );
-      final state = WorkspaceController(sampleRepository: repo, cloud: null);
+      final cloud = TestCloud(farms: TestFarms([fixtureFarm()]));
+      addTearDown(cloud.close);
+      final state = WorkspaceController(cloud: cloud);
       addTearDown(state.dispose);
-      await state.openSample();
       await tester.pumpWidget(FarmTwinApp(workspace: state));
       await tester.pumpAndSettle();
       expect(find.byType(NavigationBar), findsOneWidget);
@@ -70,6 +62,86 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('farm creation awaits acceptance and preserves inputs on retry', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final cloud = TestCloud();
+    addTearDown(cloud.close);
+    final state = WorkspaceController(cloud: cloud);
+    addTearDown(state.dispose);
+    await tester.pumpWidget(FarmTwinApp(workspace: state));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add New Farm'));
+    await tester.pumpAndSettle();
+    for (final entry in {
+      'Farm name': 'Entered farm',
+      'Country': 'Canada',
+      'State or region': 'Alberta',
+      'Currency code': 'cad',
+      'Total farm acres': '127.5',
+    }.entries) {
+      await tester.enterText(
+        find.widgetWithText(TextFormField, entry.key),
+        entry.value,
+      );
+    }
+    cloud.farms.acknowledgement = Completer<void>();
+    cloud.farms.saveFailure = const PermissionFailure(
+      'permission-denied: account cannot create this farm',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(state.farm, isNull);
+    expect(cloud.farms.writes, hasLength(1));
+    final first = cloud.farms.writes.single;
+    expect(first.name, 'Entered farm');
+    expect(first.country, 'Canada');
+    expect(first.region, 'Alberta');
+    expect(first.settings.currencyCode, 'CAD');
+    expect(first.declaredAcres, 127.5);
+    cloud.farms.acknowledgement!.complete();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('permission-denied'), findsOneWidget);
+    expect(state.farm, isNull);
+    cloud.farms.saveFailure = null;
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(state.farm!.id, first.id);
+    expect(cloud.farms.writes.last.id, first.id);
+  });
+
+  testWidgets('signed-out startup offers authentication and no farm creation', (
+    tester,
+  ) async {
+    final cloud = TestCloud(auth: TestAuth(signedIn: false));
+    addTearDown(cloud.close);
+    final state = WorkspaceController(cloud: cloud);
+    addTearDown(state.dispose);
+    await tester.pumpWidget(FarmTwinApp(workspace: state));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in or create account'), findsOneWidget);
+    expect(find.text('Add New Farm'), findsNothing);
+    expect(find.text('Load Sample Farm'), findsNothing);
+    await expectLater(
+      state.createFarm(
+        name: 'Denied',
+        country: 'US',
+        region: 'CO',
+        currencyCode: 'USD',
+        declaredAcres: 1,
+      ),
+      throwsA(isA<AuthenticationFailure>()),
+    );
+    expect(cloud.farms.writes, isEmpty);
+  });
 
   testWidgets(
     'numeric form keeps fractional edits even when JSON starts at integer zero',

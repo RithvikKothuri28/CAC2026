@@ -1,6 +1,8 @@
 # Firebase architecture and setup
 
-FarmTwin calculations run locally in Dart. Firestore persists farmer inputs and useful result summaries. The backend never uploads every optimization candidate or Monte Carlo sample. No real Firebase project is included or automatically selected in this repository.
+FarmTwin calculations run locally in Dart. Firestore persists farmer inputs and useful result summaries. The default application uses the registered options in `lib/firebase_options.dart` for the real project `farmtwin-f64bd`. `main` awaits `FirebaseBootstrap.initialize` before starting the workspace. Missing or invalid configuration produces a visible startup error; there is no alternative farm store. The backend never uploads every optimization candidate or Monte Carlo draw.
+
+The default Firestore database is in `nam5`, and email/password Authentication is enabled. Rules were deployed at `2026-09-21T04:08:46Z` as ruleset `427e4f41-0974-4a42-9084-00171e93a646`. Project billing was disabled at inspection, which blocks Functions cleanup deployment. Check [VERIFICATION.md](VERIFICATION.md) for current end-to-end evidence rather than inferring deployment from the source files.
 
 ## Document contract
 
@@ -8,7 +10,7 @@ FarmTwin calculations run locally in Dart. Firestore persists farmer inputs and 
 | --- | --- |
 | `users/{uid}` | `{schemaVersion:1, settings:map, updatedAt:serverTimestamp, createdAt?:timestamp}` |
 | `farms/{farmId}` | `{schemaVersion:1, ownerId, name, source, createdAt, updatedAt, data:Farm.toJson()}` |
-| `farms/{farmId}/members/{uid}` | `{userId:uid, role:'viewer'|'editor', createdAt?:timestamp}` |
+| `farms/{farmId}/members/{uid}` | `{userId:uid, role:'owner'|'viewer'|'editor', createdAt:serverTimestamp}`; owner record is immutable |
 | `farms/{farmId}/{collection}/{id}` | `{schemaVersion:1, createdAt, updatedAt, data:map}` for allowed private entity collections |
 | `farms/{farmId}/passportPublications/{batchId}` | Server-only write: public passport reverse mapping |
 | `publicHarvestPassports/{id}` | Validated selected public fields; anonymous get only |
@@ -17,10 +19,19 @@ FarmTwin calculations run locally in Dart. Firestore persists farmer inputs and 
 | `deletedAccounts/{uid}` | Temporary old-ID-token write denial; TTL |
 | `aiUsage/{uid}/days/{date}` | Transactional private quota; TTL |
 | `aiGlobalUsage/{date}` | Transactional aggregate quota; TTL |
+| `developmentDiagnostics/{uid}/checks/{id}` | `{schemaVersion:1,ownerId:uid,projectId:'farmtwin-f64bd',createdAt:serverTimestamp}`; own developer account only |
 
 Allowed entity collections are `fields`, `cropProfiles`, `cropHistory`, `expenses`, `debts`, `constraints`, `scenarios`, `optimizationRuns`, `simulationRuns`, `harvestBatches`, and `settings`. The current Flutter repository stores the interdependent farm model in `farms.data` as an atomic snapshot. Scenarios, saved result summaries, harvest batches, and settings can use their entity collections. The collection rules also permit normalized entity CRUD for future repository migrations. Do not mix aggregate and normalized data as competing authoritative sources.
 
-Farm `source` is `userEntered`, `imported`, or `sample`. New user farms must not silently receive sample inputs. Every farm/entity envelope uses schema version one. Domain serialization/migration handles changes within `data`; unknown future versions must return a typed failure rather than be overwritten. Parent owner and creation timestamp are immutable. Queries for owned farms must use `where('ownerId', isEqualTo: uid)`; rules are not result filters. Membership access is supported by rules, but adding a shared-farm discovery UI requires a deliberate indexing/query design.
+New farm `source` must be `userEntered` or `imported`. Historical `sample` records remain readable/editable for compatibility; production cannot create new ones. Every farm/entity envelope uses schema version one. Domain serialization/migration handles changes within `data`; unknown future versions return a typed failure rather than being overwritten. Parent owner and creation timestamp are immutable. Creation commits the farm and `members/{ownerUid}` together; rules use `getAfter` to require that atomic owner record and reject another UID's ownership. Queries for owned farms use `where('ownerId', isEqualTo: uid)`; rules are not result filters. Membership access is supported by rules, but adding shared-farm discovery requires its own indexing/query design.
+
+`FirestoreFarmRepository` captures the authenticated UID, writes the entered aggregate and server timestamps, and awaits the Firebase SDK write future. Listeners do not promote pending local creations or edits to confirmed workspace state. If acknowledgment exceeds the bounded wait, the form receives `write-pending`; Firestore may still finish its queued write, and the same farm ID is retained for retry. Successful navigation and saved UI state require acceptance by Firestore.
+
+## Manual connection diagnostic
+
+Run a debug build with `--dart-define-from-file=config/development-live.example.json`, sign in with a dedicated development account, and select **Settings → Check Firebase connectivity**. Trusted administrative tooling must first grant that account the custom claim `farmtwinDeveloper: true`; refresh the user's token or sign in again after granting it. Claims are not granted by the application.
+
+The diagnostic checks initialization, the exact project, current authentication, and an acknowledged write/server-read/delete/server-read sequence in `developmentDiagnostics/{uid}/checks/{id}`. Rules permit only that UID with the developer claim, only the fixed schema, and no listing or updating. Temporary records contain no farm payload. It is available only with `ENVIRONMENT=development`, `ENABLE_FIREBASE_DIAGNOSTIC=true`, and a debug build, and runs only when requested. Account cleanup removes interrupted diagnostic records. Debug connection logs contain UID, project, document path and write results; they exclude passwords, tokens and farm financial payloads.
 
 ## Local tests
 
@@ -43,7 +54,7 @@ npm run build
 npx firebase emulators:start --project demo-farmtwin --config ../firebase.json --only auth,firestore,functions
 ```
 
-The optional AI function uses Secret Manager when deployed. To emulate it, provide a locally ignored `functions/.secret.local` only when testing a real provider integration; normal security/persistence tests do not require any provider secret or network inference. The Auth/Firestore suite executes the backend services against real emulators; separate full-stack smoke tests should exercise callable middleware on a real configured staging app.
+The optional AI function uses Secret Manager when deployed. Normal security/persistence tests do not require any provider secret or network inference. The Auth/Firestore suite executes the backend services against real emulators; the browser suites also exercise callable middleware using the explicit development emulator configuration. Real Firebase tests have separate opt-in guards and ignored credentials.
 
 ## Callable and public API
 
@@ -57,13 +68,15 @@ All callables use Firebase callable protocol in `us-central1`. They require Fire
 | `deleteAccount` | `{}` with recent Auth login | `{deleted:true}` |
 | `explainFarm` | `{farmId,question,context:Record<string,number>}` | `{explanation,source:'cloudExplanation',metrics}` |
 
-`publicPassport` is an unauthenticated, read-only HTTP endpoint supporting `/publicPassport/<passportId>` and `/publicPassport?id=<passportId>`. Configure Flutter's `PUBLIC_PASSPORT_BASE_URL` to this function's deployed base URL. The URL is environment-specific; do not hardcode a cloud project into the application. The endpoint renders only the published allowlist and returns 404 after unpublication. A QR code contains that URL.
+`publicPassport` is an unauthenticated, read-only HTTP endpoint supporting `/publicPassport/<passportId>` and `/publicPassport?id=<passportId>`. Configure Flutter's `PUBLIC_PASSPORT_BASE_URL` to the actual function's deployed base URL after deployment. The endpoint renders only the published allowlist and returns 404 after unpublication. A QR code contains that URL.
 
 The explanation context supports these numeric keys: `revenue`, `operatingExpense`, `operatingIncome`, `debtService`, `cashAfterDebtService`, `waterUsage`, `nitrogenUsage`, `acreage`, `cropDiversity`, `practiceSatisfied`, `practiceTotal`, `candidatesGenerated`, `candidatesPruned`, `candidatesEvaluated`, `feasiblePlans`, `paretoPlans`, `mean`, `median`, `standardDeviation`, `p05`, `p25`, `p75`, `p95`, `probabilityNegativeCashFlow`, `probabilityPositiveCashFlow`. Send only metrics relevant to the explicit question. Additional/nested private context is rejected. Domain context names should be mapped explicitly to this transport contract.
 
-## Staging and production setup
+## Production setup
 
-Create distinct Firebase projects yourself, enable email/password Auth and Firestore, and generate platform app configurations using FlutterFire. Supply the app's environment-specific configuration. Register supported App Check providers for each platform and enable enforcement. App identifiers must match signed builds. Review Analytics/Crashlytics consent and collection settings in the mobile release configuration.
+The current application intentionally restricts non-emulator builds to `farmtwin-f64bd`. Production and staging example configurations omit Firebase identifier overrides and use the generated platform options. The staging environment label does not isolate a second database. Separate project isolation would require deliberate app registration, configuration and validation changes.
+
+Register the supported App Check provider for each platform and validate issued tokens before enabling service enforcement. Android uses Play Integrity and iOS uses App Attest with DeviceCheck fallback; explicitly configured native debug development uses debug providers. Web activates reCAPTCHA v3 when `APP_CHECK_WEB_SITE_KEY` is supplied. No web provider/site key or service enforcement was configured at inspection; omitting the key skips client provider activation and never disables server enforcement. Once a service enforces App Check, its clients need valid tokens. Deployed callables already require App Check by source configuration. App identifiers must match signed builds, and Analytics/Crashlytics collection remains controlled by consent.
 
 Deployment is an explicit operator step, never part of tests:
 
@@ -71,17 +84,18 @@ Deployment is an explicit operator step, never part of tests:
 cd functions
 npm ci
 npm run build
-npx firebase deploy --project YOUR_STAGING_PROJECT --config ../firebase.json --only firestore
+npx firebase deploy --project farmtwin-f64bd --config ../firebase.json --only firestore:rules
 ```
 
-Deploy the non-AI backend functions first if no AI provider is configured:
+Enable the required billing plan and APIs before deploying Functions. Deploy indexes separately, including the `members.userId` collection-group index required by account cleanup; TTL policies in the index configuration also need compatible billing. Then deploy the non-AI functions if no AI provider is configured:
 
 ```powershell
-npx firebase deploy --project YOUR_STAGING_PROJECT --config ../firebase.json --only "functions:farmtwin:publishHarvestPassport,functions:farmtwin:deleteHarvestPassport,functions:farmtwin:publicPassport,functions:farmtwin:deleteFarm,functions:farmtwin:deleteAccount,functions:farmtwin:cleanupDeletedAuthUser,functions:farmtwin:cleanupDeletedHarvestBatch,functions:farmtwin:retryDeletions"
+npx firebase deploy --project farmtwin-f64bd --config ../firebase.json --only firestore:indexes
+npx firebase deploy --project farmtwin-f64bd --config ../firebase.json --only "functions:farmtwin:publishHarvestPassport,functions:farmtwin:deleteHarvestPassport,functions:farmtwin:publicPassport,functions:farmtwin:deleteFarm,functions:farmtwin:deleteAccount,functions:farmtwin:cleanupDeletedAuthUser,functions:farmtwin:cleanupDeletedHarvestBatch,functions:farmtwin:retryDeletions"
 ```
 
 Cloud Scheduler and second-generation Functions need their associated APIs/billing/IAM enabled. The Auth deletion trigger uses first-generation Auth events; the other functions use second-generation functions.
 
-Optional AI uses an OpenAI-compatible chat-completions transport. Set server parameters from `functions/.env.example`, including an explicitly chosen provider HTTPS endpoint, allowed hostname, model, quotas, and timeout. Set `AI_PROVIDER_KEY` through `firebase functions:secrets:set` for the selected staging project, then deploy `explainFarm`. Never use an actual provider token in source or client configuration. Set `AI_ENABLED=false` to disable cloud inference. The client must also require the user's cloud-assistant consent and use local explanations on any typed failure. Server disabled/quota/failure states cannot fabricate fallback metrics.
+Optional AI uses an OpenAI-compatible chat-completions transport. Set server parameters from `functions/.env.example`, including an explicitly chosen provider HTTPS endpoint, allowed hostname, model, quotas, and timeout. Set `AI_PROVIDER_KEY` through `firebase functions:secrets:set` for `farmtwin-f64bd`, then deploy `explainFarm`. That function declares the deployed secret even when `AI_ENABLED=false`, which is why initial deployment selects the non-AI functions. Never use an actual provider token in source or client configuration. The client also requires the user's cloud-assistant consent and uses calculated local explanations on typed failures. Server disabled/quota/failure states cannot fabricate metrics.
 
 Before production deployment, run the same emulator suite, verify indexes/TTL policies deployed successfully, test Firestore App Check enforcement on signed devices, verify publication and deletion end to end, configure cleanup-failure alerts, review quotas/provider data retention, and perform the app release checks. No successful emulator test implies that these external release steps have occurred.

@@ -6,7 +6,7 @@ import 'package:farmtwin/domain/farm_domain.dart';
 
 void main() {
   final farm = Farm.fromJson(
-    jsonDecode(File('assets/sample/sample_farm.json').readAsStringSync())
+    jsonDecode(File('test/fixtures/farm.json').readAsStringSync())
         as Map<String, dynamic>,
   );
   final memoryBefore = ProcessInfo.currentRss;

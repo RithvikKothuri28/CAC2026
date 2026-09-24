@@ -7,7 +7,7 @@ All stored models expose `toJson()`, `fromJson(Map<String,dynamic>)`, and `copyW
 ## Input models
 
 - `Farm(id, name, fields: List<Field>, crops: List<CropProfile>, expenses: List<Expense>, debts: List<Debt>, constraints: List<FarmConstraint>, settings: FarmSettings, provenance: Provenance, scenarios: List<StressScenario> = [], schemaVersion = 1)`; getters `acreage`, `currentPlan`; `crop(id)`, `field(id)`, `validate({bool requireReady = false})`.
-- `Field(id, name, acres, currentCropId, compatibleCropIds: List<String>, cropHistory: List<String> = [], irrigated = true, soilType = '', yieldMultiplier = 1, provenance)`.
+- `Field(id, name, acres, currentCropId, compatibleCropIds: List<String>, cropHistory: List<String> = [], irrigated = true, soilType = '', yieldMultiplier = 1, provenance)`; `isCompatibleWith(CropProfile)` requires explicit ID membership and satisfied irrigation requirements. The field form explicitly initializes irrigation to false and both assignment/compatibility to empty; the model constructor default is not used as a farmer input.
 - `CropProfile(id, name, yieldPerAcre, pricePerUnit, yieldUnit, seedCostPerAcre, fertilizerCostPerAcre, chemicalCostPerAcre, waterCostPerAcre, laborCostPerAcre, fuelCostPerAcre, equipmentCostPerAcre, waterPerAcre, nitrogenPerAcre, yieldVolatility, priceVolatility, rotationFamily, minimumRotationYears, requiresIrrigation, inputs: List<String>, providesSoilCover, provenance)`; getter `costPerAcre`.
 - `Expense(id, name, annualAmount, inflationRate, provenance)`.
 - `Debt(id, name, balance, annualInterestRate, annualPayment, provenance)`.
@@ -23,6 +23,8 @@ All stored models expose `toJson()`, `fromJson(Map<String,dynamic>)`, and `copyW
 - `FarmPlan(assignments: Map<String,String>)` maps field id to crop id; `toJson/fromJson`, `copyWith`.
 - `StressScenario(id, name, priceMultiplier, yieldMultiplier, fertilizerMultiplier, fuelMultiplier, laborMultiplier, waterAvailabilityMultiplier, interestRateMultiplier, equipmentCostAddition)`; neutral multiplier defaults are 1, addition 0.
 
+Crop references use IDs, never display names. `Farm.validate()` requires every nonempty current crop to exist and be compatible; an empty current ID may persist as incomplete input. `validate(requireReady: true)` and `validatePlan()` reject incomplete assignments before calculation. Legacy reference normalization and the read-only editing path are documented in [CROP_COMPATIBILITY.md](CROP_COMPATIBILITY.md).
+
 ## Engines and outputs
 
 - `FinancialEngine().evaluate(Farm, FarmPlan)` -> `FarmFinancialResult`: `revenue`, `variableExpense`, `fixedExpense`, `operatingExpense`, `contributionMargin`, `operatingIncome`, `debtService`, `cashAfterDebt`, `marginPerAcre`, nullable `debtCoverage`, `waterUsage`, `nitrogenUsage`, `concentration`, `diversity`, `soilCoverShare`, `costBreakdown: Map<String,double>`, `fields: List<FieldFinancialResult>`. Field results: `fieldId`, `cropId`, `acres`, `revenue`, `cost`, `contributionMargin`, `waterUsage`, `nitrogenUsage`, nullable `breakEvenPrice`, `breakEvenYield`.
@@ -34,7 +36,7 @@ All stored models expose `toJson()`, `fromJson(Map<String,dynamic>)`, and `copyW
 - `AlertEngine().evaluate(farm,financial,report)` -> `List<FarmAlert>` (`id`, `severity: AlertSeverity`, `message`, `sourceValues: Map<String,double>`).
 - `LocalExplanationEngine().explain(String question,Farm farm,{OptimizationResult? optimization,MonteCarloResult? risk})` -> dynamic String assembled only from current engine values, relevant field changes and constraints. It calculates the current farm when no run is supplied.
 
-The sample is input only: `assets/sample/sample_farm.json`. Every output is calculated at runtime. JSON fields mirror the constructor names above; enums serialize by `.name`.
+Domain test inputs live in `test/fixtures/farm.json` and are not packaged in the application. Every output is calculated at runtime. JSON fields mirror the constructor names above; enums serialize by `.name`.
 
 ## Computational limits and modeling disclosures
 

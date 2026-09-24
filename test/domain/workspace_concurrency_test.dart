@@ -1,30 +1,17 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:farmtwin/data/data.dart';
-import 'package:farmtwin/domain/farm_domain.dart';
 import 'package:farmtwin/features/workspace/workspace_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-class _DelayedSaveRepository extends Fake implements FarmRepository {
-  final saved = Completer<void>();
-  @override
-  Future<void> saveFarm(Farm farm) => saved.future;
-}
+import '../support/firebase_workspace.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() => SharedPreferences.setMockInitialValues({}));
 
   Future<WorkspaceController> workspace() async {
-    final repository = await SampleFarmRepository.open(
-      loadAsset: (path) async => File(path).readAsStringSync(),
-    );
-    final state = WorkspaceController(
-      sampleRepository: repository,
-      cloud: null,
-    );
-    await state.openSample();
+    final cloud = TestCloud(farms: TestFarms([fixtureFarm()]));
+    addTearDown(cloud.close);
+    final state = WorkspaceController(cloud: cloud);
+    await Future<void>.delayed(Duration.zero);
     await state.optimize();
     expect(state.error, isNull);
     expect(state.optimization, isNotNull);
@@ -70,15 +57,16 @@ void main() {
     () async {
       final state = await workspace();
       addTearDown(state.dispose);
-      final delayed = _DelayedSaveRepository();
-      state.repository = delayed;
+      final delayed = (state.cloud as TestCloud).farms;
+      delayed.acknowledgement = Completer<void>();
       final pending = state.saveFarm(
         state.farm!.copyWith(name: 'Pending edit'),
       );
-      state.leaveSample();
+      await state.cloud!.auth.signOut();
+      await Future<void>.delayed(Duration.zero);
       expect(state.farm, isNull);
-      delayed.saved.complete();
-      await pending;
+      delayed.acknowledgement!.complete();
+      await expectLater(pending, throwsA(isA<AuthenticationFailure>()));
       expect(state.farm, isNull);
       expect(state.repository, isNull);
     },
@@ -87,15 +75,16 @@ void main() {
   test('completed save cannot replace a newly selected farm', () async {
     final state = await workspace();
     addTearDown(state.dispose);
-    final delayed = _DelayedSaveRepository();
-    state.repository = delayed;
+    final delayed = (state.cloud as TestCloud).farms;
+    delayed.acknowledgement = Completer<void>();
     final pending = state.saveFarm(state.farm!.copyWith(name: 'Pending edit'));
     final selected = state.farm!.copyWith(
       id: 'another-farm',
       name: 'Another farm',
     );
+    delayed.values = [...delayed.values, selected];
     state.selectFarm(selected);
-    delayed.saved.complete();
+    delayed.acknowledgement!.complete();
     await pending;
     expect(state.farm!.id, selected.id);
     expect(state.farm!.name, selected.name);

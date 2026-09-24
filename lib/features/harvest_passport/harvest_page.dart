@@ -158,7 +158,6 @@ class _HarvestPageState extends State<HarvestPage> {
   Widget build(BuildContext context) {
     final state = widget.state;
     final canPublish =
-        !state.sampleMode &&
         (state.cloud?.features.harvestPublishingEnabled ?? false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -174,9 +173,7 @@ class _HarvestPageState extends State<HarvestPage> {
         ),
         if (!canPublish) ...[
           Notice(
-            state.sampleMode
-                ? 'Sample harvest records stay on this device. Public publishing requires a configured cloud account.'
-                : 'Public publishing is disabled for this deployment. Private harvest records can still be saved.',
+            'Public publishing is disabled for this deployment. Private harvest records can still be saved.',
           ),
           const SizedBox(height: 24),
         ],
@@ -306,8 +303,7 @@ class _HarvestPageState extends State<HarvestPage> {
                                               () async {
                                                 if (record.data['passportId'] !=
                                                         null &&
-                                                    state.cloud != null &&
-                                                    !state.sampleMode) {
+                                                    state.cloud != null) {
                                                   await state.cloud!.passports
                                                       .unpublish(
                                                         farmId: state.farm!.id,

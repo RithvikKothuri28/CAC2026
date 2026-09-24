@@ -38,6 +38,7 @@ Future<Map<String, dynamic>?> editModel(
   required void Function(Map<String, dynamic>) validate,
   Map<String, Map<String, String>> choices = const {},
   String? help,
+  Future<void> Function(Map<String, dynamic>)? onSave,
 }) => showDialog<Map<String, dynamic>>(
   context: context,
   barrierDismissible: false,
@@ -47,6 +48,7 @@ Future<Map<String, dynamic>?> editModel(
     validate: validate,
     choices: choices,
     help: help,
+    onSave: onSave,
   ),
 );
 
@@ -57,12 +59,14 @@ class _ModelEditor extends StatefulWidget {
     required this.validate,
     required this.choices,
     this.help,
+    this.onSave,
   });
   final String title;
   final Map<String, dynamic> initial;
   final void Function(Map<String, dynamic>) validate;
   final Map<String, Map<String, String>> choices;
   final String? help;
+  final Future<void> Function(Map<String, dynamic>)? onSave;
   @override
   State<_ModelEditor> createState() => _ModelEditorState();
 }
@@ -72,6 +76,7 @@ class _ModelEditorState extends State<_ModelEditor> {
   final _controllers = <String, TextEditingController>{};
   late Map<String, dynamic> value;
   String? error;
+  bool saving = false;
   @override
   void initState() {
     super.initState();
@@ -277,56 +282,72 @@ class _ModelEditorState extends State<_ModelEditor> {
       .toList();
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    content: SizedBox(
-      width: 560,
-      child: SingleChildScrollView(
-        child: Form(
-          key: _form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (widget.help != null) ...[
-                Text(
-                  widget.help!,
-                  style: Theme.of(context).textTheme.bodySmall,
+  Widget build(BuildContext context) => PopScope(
+    canPop: !saving,
+    child: AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _form,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.help != null) ...[
+                  Text(
+                    widget.help!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                AbsorbPointer(
+                  absorbing: saving,
+                  child: Column(children: fields(value, '')),
                 ),
-                const SizedBox(height: 20),
+                if (saving) const LinearProgressIndicator(),
+                if (error != null)
+                  Text(error!, style: const TextStyle(color: FarmTheme.danger)),
               ],
-              ...fields(value, ''),
-              if (error != null)
-                Text(error!, style: const TextStyle(color: FarmTheme.danger)),
-            ],
+            ),
           ),
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: saving
+              ? null
+              : () async {
+                  if (!_form.currentState!.validate()) return;
+                  _form.currentState!.save();
+                  setState(() {
+                    saving = true;
+                    error = null;
+                  });
+                  try {
+                    if (value.containsKey('provenance')) {
+                      value['provenance'] = Provenance(
+                        source: DataSourceType.userEntered,
+                        updatedAt: DateTime.now().toUtc(),
+                      ).toJson();
+                    }
+                    widget.validate(value);
+                    await widget.onSave?.call(value);
+                    if (context.mounted) Navigator.pop(context, value);
+                  } catch (failure) {
+                    if (mounted) setState(() => error = failure.toString());
+                  } finally {
+                    if (mounted) setState(() => saving = false);
+                  }
+                },
+          child: const Text('Save'),
+        ),
+      ],
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: () {
-          if (!_form.currentState!.validate()) return;
-          _form.currentState!.save();
-          try {
-            if (value.containsKey('provenance')) {
-              value['provenance'] = Provenance(
-                source: DataSourceType.userEntered,
-                updatedAt: DateTime.now().toUtc(),
-              ).toJson();
-            }
-            widget.validate(value);
-            Navigator.pop(context, value);
-          } catch (failure) {
-            setState(() => error = failure.toString());
-          }
-        },
-        child: const Text('Save'),
-      ),
-    ],
   );
 }

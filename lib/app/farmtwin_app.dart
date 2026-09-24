@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/widgets/components.dart';
@@ -153,24 +154,18 @@ class _WorkspaceShell extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(
-                            state.sampleMode
-                                ? Icons.science_outlined
-                                : Icons.eco_outlined,
+                            Icons.eco_outlined,
                             color: FarmTheme.moss,
                             size: 22,
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            state.sampleMode
-                                ? 'Sample Farm'
-                                : 'Farmer-led decisions',
+                            'Farmer-led decisions',
                             style: Theme.of(context).textTheme.titleSmall,
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            state.sampleMode
-                                ? 'Sample inputs. Live calculations. Saved on this device.'
-                                : 'You define the boundaries. Explore what’s possible inside them.',
+                            'You define the boundaries. Explore what’s possible inside them.',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
@@ -259,47 +254,31 @@ class _WorkspaceShell extends ConsumerWidget {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              if (state.sampleMode)
-                                const Chip(
-                                  label: Text(
-                                    'SAMPLE',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      letterSpacing: 1,
-                                    ),
-                                  ),
-                                  avatar: Icon(
-                                    Icons.science_outlined,
-                                    size: 15,
-                                  ),
-                                  padding: EdgeInsets.zero,
-                                )
-                              else
-                                StreamBuilder<FarmSyncStatus>(
-                                  stream: state.cloud!.farms.syncStatus,
-                                  initialData:
-                                      state.cloud!.farms.currentSyncStatus,
-                                  builder: (context, snapshot) => Tooltip(
-                                    message: snapshot.data!.message,
-                                    child: Icon(
-                                      snapshot.data!.failure != null
-                                          ? Icons.cloud_off
-                                          : snapshot.data!.hasPendingWrites
-                                          ? Icons.cloud_upload_outlined
-                                          : snapshot.data!.isFromCache
-                                          ? Icons.cloud_off_outlined
-                                          : Icons.cloud_done_outlined,
-                                      color: snapshot.data!.failure != null
-                                          ? FarmTheme.danger
-                                          : FarmTheme.moss,
-                                      size: 20,
-                                    ),
+                              StreamBuilder<FarmSyncStatus>(
+                                stream: state.cloud!.farms.syncStatus,
+                                initialData:
+                                    state.cloud!.farms.currentSyncStatus,
+                                builder: (context, snapshot) => Tooltip(
+                                  message: snapshot.data!.message,
+                                  child: Icon(
+                                    snapshot.data!.failure != null
+                                        ? Icons.cloud_off
+                                        : snapshot.data!.hasPendingWrites
+                                        ? Icons.cloud_upload_outlined
+                                        : snapshot.data!.isFromCache
+                                        ? Icons.cloud_off_outlined
+                                        : Icons.cloud_done_outlined,
+                                    color: snapshot.data!.failure != null
+                                        ? FarmTheme.danger
+                                        : FarmTheme.moss,
+                                    size: 20,
                                   ),
                                 ),
+                              ),
                               const SizedBox(width: 8),
                               IconButton(
-                                tooltip: 'Create farm',
-                                onPressed: state.busy
+                                tooltip: 'Add New Farm',
+                                onPressed: state.busy || !state.signedIn
                                     ? null
                                     : () => createFarmDialog(context, state),
                                 icon: const Icon(Icons.add),
@@ -326,7 +305,7 @@ class _WorkspaceShell extends ConsumerWidget {
                           ],
                         ),
                       ),
-                    if (!state.sampleMode && state.cloud != null)
+                    if (state.cloud != null)
                       StreamBuilder<FarmSyncStatus>(
                         stream: state.cloud!.farms.syncStatus,
                         initialData: state.cloud!.farms.currentSyncStatus,
@@ -356,6 +335,11 @@ class _WorkspaceShell extends ConsumerWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                if (state.farm != null &&
+                                    state.setupIssue != null) ...[
+                                  Notice(state.setupIssue!),
+                                  const SizedBox(height: 20),
+                                ],
                                 if (state.error != null ||
                                     state.notice != null) ...[
                                   Notice(
@@ -487,6 +471,10 @@ class _Welcome extends StatelessWidget {
                 Notice(state.error!, error: true),
                 const SizedBox(height: 18),
               ],
+              if (state.notice != null) ...[
+                Notice(state.notice!),
+                const SizedBox(height: 18),
+              ],
               if (state.startupError != null) ...[
                 Notice(state.startupError!, error: true),
                 const SizedBox(height: 18),
@@ -505,7 +493,7 @@ class _Welcome extends StatelessWidget {
                           ? null
                           : () => createFarmDialog(context, state),
                       icon: const Icon(Icons.add),
-                      label: const Text('Create your farm'),
+                      label: const Text('Add New Farm'),
                     )
                   else if (state.cloud != null)
                     FilledButton.icon(
@@ -515,17 +503,30 @@ class _Welcome extends StatelessWidget {
                       icon: const Icon(Icons.person_outline),
                       label: const Text('Sign in or create account'),
                     ),
-                  OutlinedButton.icon(
-                    onPressed: state.busy ? null : state.openSample,
-                    icon: const Icon(Icons.science_outlined),
-                    label: const Text('Load Sample Farm'),
-                  ),
+                  if (state.signedIn)
+                    OutlinedButton(
+                      onPressed: state.busy
+                          ? null
+                          : () => state.perform(
+                              'Signing out',
+                              state.cloud!.auth.signOut,
+                            ),
+                      child: const Text('Sign out'),
+                    ),
+                  if (kDebugMode && state.connectivityDiagnostic != null)
+                    OutlinedButton.icon(
+                      onPressed: state.busy
+                          ? null
+                          : state.runConnectivityDiagnostic,
+                      icon: const Icon(Icons.network_check),
+                      label: const Text('Check Firebase connectivity'),
+                    ),
                 ],
               ),
               const SizedBox(height: 28),
               if (state.cloud == null)
                 const Notice(
-                  'Cloud accounts are not configured in this development build. The explicitly selected Sample Farm works locally, including edits, optimization, simulations, and saved calculations.',
+                  'Firebase could not be started. Resolve the configuration error and restart the app to sign in and save your farm.',
                 ),
               const SizedBox(height: 36),
               const Divider(),
@@ -536,7 +537,7 @@ class _Welcome extends StatelessWidget {
                 children: [
                   _Feature(Icons.calculate_outlined, 'Real calculations'),
                   _Feature(Icons.rule, 'Your constraints'),
-                  _Feature(Icons.cloud_off_outlined, 'Local analysis'),
+                  _Feature(Icons.cloud_done_outlined, 'Cloud farm records'),
                 ],
               ),
             ],

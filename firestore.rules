@@ -37,6 +37,23 @@ service cloud.firestore {
         && d.keys().hasOnly(['schemaVersion', 'createdAt', 'updatedAt', 'data'])
         && d.schemaVersion == 1 && d.data is map;
     }
+    function ownerMembershipAfter(id) {
+      let membership = getAfter(/databases/$(database)/documents/farms/$(id)/members/$(request.auth.uid)).data;
+      return membership.keys().hasAll(['userId', 'role', 'createdAt'])
+        && membership.keys().hasOnly(['userId', 'role', 'createdAt'])
+        && membership.userId == request.auth.uid && membership.role == 'owner'
+        && membership.createdAt == request.time;
+    }
+    function membershipShape(uid) {
+      let d = request.resource.data;
+      return d.keys().hasAll(['userId', 'role', 'createdAt'])
+        && d.keys().hasOnly(['userId', 'role', 'createdAt'])
+        && d.userId == uid;
+    }
+    function developerDiagnostic(uid) {
+      return signedIn() && request.auth.uid == uid
+        && request.auth.token.get('farmtwinDeveloper', false) == true;
+    }
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create, update: if signedIn() && request.auth.uid == uid
@@ -50,16 +67,26 @@ service cloud.firestore {
       // Ownership must be evaluated against query resource, not get(farmId), for query proofs.
       allow list: if signedIn() && resource.data.ownerId == request.auth.uid;
       allow get: if signedIn() && !exists(/databases/$(database)/documents/farms/$(farmId));
-      allow create: if signedIn() && farmShape() && request.resource.data.ownerId == request.auth.uid && timestampedCreate();
+      // A new farm and its immutable owner membership must be committed atomically.
+      allow create: if signedIn() && farmShape() && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.source in ['userEntered', 'imported']
+        && timestampedCreate() && ownerMembershipAfter(farmId);
       allow update: if editor(farmId) && farmShape() && request.resource.data.ownerId == resource.data.ownerId && timestampedUpdate();
       // Server callable first freezes writes, then recursively deletes descendants and passports.
       allow delete: if false;
       match /members/{uid} {
         allow read: if reader(farmId);
-        allow create, update: if owner(farmId) && active(farmId) && uid != farm(farmId).data.ownerId
-          && request.resource.data.keys().hasOnly(['userId', 'role', 'createdAt'])
-          && request.resource.data.userId == uid
-          && request.resource.data.role in ['viewer', 'editor'];
+        allow create: if signedIn() && uid == request.auth.uid
+          && !exists(/databases/$(database)/documents/farms/$(farmId))
+          && getAfter(/databases/$(database)/documents/farms/$(farmId)).data.ownerId == uid
+          && membershipShape(uid) && request.resource.data.role == 'owner'
+          && request.resource.data.createdAt == request.time;
+        allow create: if owner(farmId) && active(farmId) && uid != farm(farmId).data.ownerId
+          && membershipShape(uid) && request.resource.data.role in ['viewer', 'editor']
+          && request.resource.data.createdAt == request.time;
+        allow update: if owner(farmId) && active(farmId) && uid != farm(farmId).data.ownerId
+          && membershipShape(uid) && request.resource.data.role in ['viewer', 'editor']
+          && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if owner(farmId) && active(farmId) && uid != farm(farmId).data.ownerId;
       }
       match /{collection}/{entityId} {
@@ -72,6 +99,19 @@ service cloud.firestore {
     match /publicHarvestPassports/{passportId} {
       allow get: if true;
       allow list, write: if false;
+    }
+    // Manual development connectivity checks require a server-issued custom claim.
+    // Production clients never invoke this; regular farm accounts have no access.
+    match /developmentDiagnostics/{uid}/checks/{checkId} {
+      allow get, delete: if developerDiagnostic(uid);
+      allow create: if developerDiagnostic(uid)
+        && request.resource.data.keys().hasAll(['schemaVersion', 'ownerId', 'createdAt', 'projectId'])
+        && request.resource.data.keys().hasOnly(['schemaVersion', 'ownerId', 'createdAt', 'projectId'])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.ownerId == uid
+        && request.resource.data.projectId == 'farmtwin-f64bd'
+        && request.resource.data.createdAt == request.time;
+      allow list, update: if false;
     }
     // Server-only quotas, deletion jobs, reverse publication mappings, and any future collection.
     match /{document=**} { allow read, write: if false; }

@@ -239,16 +239,25 @@ void main() {
   );
 
   test(
-    'write wait expires as queued, then publishes actual acknowledgement',
+    'write wait expires as failure, then publishes actual acknowledgement',
     () async {
       final synchronization = WriteSynchronization(
         acknowledgementWait: Duration.zero,
       );
       final write = Completer<void>();
-      await synchronization.track(write.future);
+      await expectLater(
+        synchronization.track(write.future),
+        throwsA(
+          isA<NetworkFailure>().having(
+            (error) => error.code,
+            'code',
+            'write-pending',
+          ),
+        ),
+      );
       expect(synchronization.current.hasPendingWrites, isTrue);
-      expect(synchronization.current.failure, isNull);
-      expect(synchronization.current.message, contains('queued'));
+      expect(synchronization.current.failure?.code, 'write-pending');
+      expect(synchronization.current.message, contains('not confirmed'));
       final acknowledged = synchronization.status.firstWhere(
         (state) => !state.hasPendingWrites,
       );
@@ -273,9 +282,12 @@ void main() {
         acknowledgementWait: Duration.zero,
       );
       final write = Completer<void>();
-      await synchronization.track(write.future);
+      await expectLater(
+        synchronization.track(write.future),
+        throwsA(isA<NetworkFailure>()),
+      );
       final rejection = synchronization.status.firstWhere(
-        (state) => state.failure != null,
+        (state) => state.failure is PermissionFailure,
       );
       write.completeError(const PermissionFailure('Write rejected by rules'));
       final state = await rejection;
@@ -301,8 +313,14 @@ void main() {
       final first = Completer<void>();
       final second = Completer<void>();
       await Future.wait([
-        synchronization.track(first.future),
-        synchronization.track(second.future),
+        expectLater(
+          synchronization.track(first.future),
+          throwsA(isA<NetworkFailure>()),
+        ),
+        expectLater(
+          synchronization.track(second.future),
+          throwsA(isA<NetworkFailure>()),
+        ),
       ]);
       first.complete();
       await Future<void>.delayed(Duration.zero);

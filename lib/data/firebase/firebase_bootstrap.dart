@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/config/app_config.dart';
 import '../../core/errors/app_failure.dart';
 import '../../core/logging/app_logger.dart';
+import '../../firebase_options.dart';
 import 'cloud_services.dart';
 import 'firebase_auth_repository.dart';
 import 'firebase_failure.dart';
@@ -40,19 +41,28 @@ class FirebaseServices {
 }
 
 class FirebaseBootstrap {
-  static Future<FirebaseServices?> initialize(AppConfig config) async {
+  static Future<FirebaseServices> initialize(AppConfig config) async {
     config.validate();
-    final options = config.firebaseOptions;
-    if (options == null) return null;
     if (!kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.linux)) {
       throw const ConfigurationFailure(
-        'Cloud services are supported on Android, iOS, macOS and web. Use an explicit local Sample Farm on this platform.',
+        'Cloud services are supported on Android, iOS and web. Run FarmTwin on a supported platform.',
       );
     }
     try {
-      final app = await Firebase.initializeApp(options: options);
+      final app = Firebase.apps.isNotEmpty
+          ? Firebase.app()
+          : config.usesGeneratedFirebaseOptions
+          ? await Firebase.initializeApp(
+              options: DefaultFirebaseOptions.currentPlatform,
+            )
+          : await Firebase.initializeApp(options: config.firebaseOptions!);
+      if (app.options.projectId != config.firebaseOptions!.projectId) {
+        throw const ConfigurationFailure(
+          'The initialized Firebase app does not match the configured project.',
+        );
+      }
       final auth = FirebaseAuth.instanceFor(app: app);
       final firestore = FirebaseFirestore.instanceFor(app: app);
       final functions = FirebaseFunctions.instanceFor(
@@ -72,7 +82,7 @@ class FirebaseBootstrap {
           config.emulatorHost,
           config.functionsEmulatorPort,
         );
-      } else {
+      } else if (!kIsWeb || config.webAppCheckSiteKey.isNotEmpty) {
         await FirebaseAppCheck.instanceFor(app: app).activate(
           providerAndroid: config.isDevelopment && kDebugMode
               ? const AndroidDebugProvider()
@@ -144,6 +154,7 @@ class FirebaseBootstrap {
           auth,
           functions,
           synchronization: synchronization,
+          developmentLogging: kDebugMode,
         ),
         settings: FirestoreSettingsRepository(
           firestore,
@@ -159,7 +170,7 @@ class FirebaseBootstrap {
       rethrow;
     } on Object catch (error) {
       throw ConfigurationFailure(
-        'Cloud services could not start. Check environment configuration or retry. Local sample inputs remain an explicit option.',
+        'Firebase could not start (${firebaseFailure(error).code ?? 'configuration-error'}). Check the connection and Firebase configuration, then retry.',
         cause: error,
       );
     }

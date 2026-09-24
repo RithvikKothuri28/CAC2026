@@ -43,7 +43,7 @@ class MultiYearEngine {
                   .map(state.crop)
                   .where(
                     (c) =>
-                        (!c.requiresIrrigation || field.irrigated) &&
+                        field.isCompatibleWith(c) &&
                         const ConstraintEngine().rotationAllowed(
                           state,
                           field,
